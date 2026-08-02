@@ -24,6 +24,16 @@ FS-UAE profile. The emulator is used for target testing, not compilation. Commit
 source and reproducible build instructions to Gitea or another Git remote.
 
 To exercise the baseline project, run `make` in `examples/hello-amiga`, then
-run `scripts/test-amiga-build.sh`. Set `AMIGALAB_RUN_FS_UAE=1` to launch the
+run `scripts/test-amiga.sh`. Set `AMIGALAB_RUN_FS_UAE=1` when using
+`scripts/test-amiga-build.sh` to launch the
 A1200 profile after a successful build. Place the executable in
 `/srv/amigalab/shared` for the supplied profiles to mount it.
+
+## First Amiga build
+
+1. Install AmigaLab on Debian with `make install`.
+2. Run the Ansible playbook and open a new shell to load `/etc/profile.d/amigalab.sh`.
+3. Enter `examples/hello-amiga`.
+4. Run `make`; the output is `build/hello-amiga`.
+5. Copy the executable to `/srv/amigalab/shared`, configure a licensed FS-UAE
+   profile, and launch FS-UAE.

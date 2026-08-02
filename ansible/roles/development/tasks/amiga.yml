@@ -10,6 +10,7 @@
     state: directory
     mode: '0755'
   loop:
+    - "{{ amigalab_root }}"
     - "{{ toolchain_prefix }}"
     - "{{ toolchain_prefix }}/bin"
     - "{{ toolchain_prefix }}/src"
@@ -30,6 +31,12 @@
     - install-vbcc.sh
     - install-vasm.sh
     - install-vlink.sh
+
+- name: Install shared Amiga toolchain helper library
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../toolchains/common.sh"
+    dest: "{{ toolchain_prefix }}/bin/common.sh"
+    mode: '0755'
 
 - name: Configure shell environment for Amiga development
   ansible.builtin.template:

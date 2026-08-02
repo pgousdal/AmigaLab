@@ -36,7 +36,8 @@ development_packages:
   - python3-pip
   - python3-venv
 
-toolchain_prefix: /opt/amigalab/toolchains
+amigalab_root: /opt/amigalab
+toolchain_prefix: "{{ amigalab_root }}/toolchains"
 amiga_toolchain_build_packages:
   - autoconf
   - automake

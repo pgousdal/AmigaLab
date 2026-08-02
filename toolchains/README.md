@@ -1,7 +1,9 @@
 # Amiga cross-toolchains
 
-AmigaLab installs toolchains below `/opt/amigalab/toolchains` (override with
-`TOOLCHAIN_PREFIX`). Ansible installs the host build prerequisites and
+AmigaLab installs toolchains below `/opt/amigalab/toolchains`. `common.sh`
+defines `AMIGALAB_ROOT=/opt/amigalab` and
+`AMIGALAB_TOOLCHAIN=/opt/amigalab/toolchains`; override either variable (or the
+compatibility variable `TOOLCHAIN_PREFIX`) before running an installer. Ansible installs the host build prerequisites and
 `/etc/profile.d/amigalab.sh`; start a new shell after applying the playbook.
 
 ## m68k-amigaos-gcc
