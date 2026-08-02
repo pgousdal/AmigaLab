@@ -1,4 +1,8 @@
-.PHONY: install ansible docker-up docker-down verify backup
+ARCHIVE_ROOT ?= /srv/amigalab
+COLLECTION ?= aminet
+COLLECTION_PATH = $(ARCHIVE_ROOT)/$(COLLECTION)
+
+.PHONY: install ansible docker-up docker-down verify backup archive-init manifest verify-archive
 
 install:
 	./scripts/bootstrap.sh
@@ -17,3 +21,11 @@ verify:
 
 backup:
 	./scripts/backup.sh
+
+archive-init: ansible
+
+manifest:
+	python3 scripts/build-manifest.py "$(COLLECTION_PATH)"
+
+verify-archive:
+	python3 scripts/verify-archive.py "$(COLLECTION_PATH)"

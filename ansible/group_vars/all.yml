@@ -18,6 +18,19 @@ amigalab_storage_directories:
   - backups
   - shared
 
+amigalab_archive_collections:
+  - aminet
+  - fish
+  - magazines
+  - docs
+  - ndk
+  - adf
+  - hdf
+  - demos
+  - source
+  - workbench
+  - kickstarts
+
 common_packages:
   - ca-certificates
   - curl

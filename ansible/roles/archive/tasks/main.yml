@@ -1,0 +1,35 @@
+---
+- name: Create archive collection directories
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ amigalab_archive_collections }}"
+
+- name: Create default archive metadata when absent
+  ansible.builtin.template:
+    src: collection.yml.j2
+    dest: "{{ amigalab_storage_root }}/{{ item }}/collection.yml"
+    mode: '0644'
+    force: false
+  loop: "{{ amigalab_archive_collections }}"
+
+- name: Create empty archive manifests when absent
+  ansible.builtin.copy:
+    content: "{\n  \"files\": [],\n  \"schema_version\": 1\n}\n"
+    dest: "{{ amigalab_storage_root }}/{{ item }}/manifest.json"
+    mode: '0644'
+    force: false
+  loop: "{{ amigalab_archive_collections }}"
+
+- name: Create empty archive checksum files when absent
+  ansible.builtin.copy:
+    content: ''
+    dest: "{{ amigalab_storage_root }}/{{ item }}/checksums.sha256"
+    mode: '0644'
+    force: false
+  loop: "{{ amigalab_archive_collections }}"
+
+- name: Report archive framework dependencies
+  ansible.builtin.debug:
+    msg: Archive tooling uses the Python standard library; no additional Python packages are required.

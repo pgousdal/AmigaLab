@@ -5,6 +5,7 @@
   gather_facts: true
   roles:
     - common
+    - archive
     - development
     - emulation
     - services
