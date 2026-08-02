@@ -1,0 +1,4 @@
+---
+- name: Report optional container services
+  ansible.builtin.debug:
+    msg: Run 'make docker-up' from the repository to start Gitea, Meilisearch, Caddy, and Homepage.

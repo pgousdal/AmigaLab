@@ -1,0 +1,8 @@
+---
+- AmigaLab:
+    - Dashboard:
+        href: /
+        description: Amiga preservation workstation services
+    - Gitea:
+        href: /gitea/
+        description: Local source control

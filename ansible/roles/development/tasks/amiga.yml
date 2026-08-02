@@ -1,0 +1,38 @@
+---
+- name: Install Amiga toolchain build prerequisites
+  ansible.builtin.apt:
+    name: "{{ amiga_toolchain_build_packages }}"
+    state: present
+
+- name: Create Amiga toolchain directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ toolchain_prefix }}"
+    - "{{ toolchain_prefix }}/bin"
+    - "{{ toolchain_prefix }}/src"
+    - "{{ toolchain_prefix }}/vbcc"
+
+- name: Install Amiga toolchain helper
+  ansible.builtin.template:
+    src: amigalab-toolchain-info.sh.j2
+    dest: "{{ toolchain_prefix }}/bin/amigalab-toolchain-info"
+    mode: '0755'
+
+- name: Install versioned Amiga toolchain installer helpers
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../toolchains/{{ item }}"
+    dest: "{{ toolchain_prefix }}/bin/amigalab-{{ item }}"
+    mode: '0755'
+  loop:
+    - install-vbcc.sh
+    - install-vasm.sh
+    - install-vlink.sh
+
+- name: Configure shell environment for Amiga development
+  ansible.builtin.template:
+    src: amigalab.sh.j2
+    dest: /etc/profile.d/amigalab.sh
+    mode: '0644'

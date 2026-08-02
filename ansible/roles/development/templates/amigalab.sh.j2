@@ -1,0 +1,6 @@
+# Managed by Ansible. System-wide AmigaLab development environment.
+export AMIGALAB_TOOLCHAIN_PREFIX="{{ toolchain_prefix }}"
+export AMIGA_TOOLCHAIN_PREFIX="$AMIGALAB_TOOLCHAIN_PREFIX"
+export AMIGA_NDK="${AMIGA_NDK:-{{ amigalab_storage_root }}/ndk}"
+export VBCC="${VBCC:-$AMIGALAB_TOOLCHAIN_PREFIX/vbcc}"
+export PATH="$AMIGALAB_TOOLCHAIN_PREFIX/bin:$PATH"

@@ -1,0 +1,65 @@
+---
+# System-wide settings. Override these in an inventory-specific group_vars file.
+amigalab_storage_root: /srv/amigalab
+amigalab_storage_directories:
+  - aminet
+  - whdload
+  - adf
+  - hdf
+  - kickstarts
+  - workbench
+  - ndk
+  - docs
+  - magazines
+  - fish
+  - demos
+  - source
+  - builds
+  - backups
+  - shared
+
+common_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - rsync
+  - unzip
+
+development_packages:
+  - build-essential
+  - cmake
+  - gcc
+  - git
+  - git-lfs
+  - make
+  - python3
+  - python3-pip
+  - python3-venv
+
+toolchain_prefix: /opt/amigalab/toolchains
+amiga_toolchain_build_packages:
+  - autoconf
+  - automake
+  - bison
+  - flex
+  - libgmp-dev
+  - libmpc-dev
+  - libmpfr-dev
+  - pkg-config
+  - texinfo
+
+emulation_packages:
+  - fs-uae
+  - fs-uae-launcher
+
+# Enable only when installation from Microsoft's official repository is wanted.
+vscode_repository_enabled: false
+vscode_install_package: false
+
+# These toolchains are intentionally placeholders. Acquire only legally
+# redistributable toolchains and SDK inputs; no Amiga SDK material is fetched.
+amiga_toolchain_placeholders:
+  - m68k-amigaos-gcc
+  - vbcc
+  - vasm
+  - vlink

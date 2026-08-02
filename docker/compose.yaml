@@ -1,0 +1,61 @@
+services:
+  gitea:
+    image: ${GITEA_IMAGE:-gitea/gitea:1.24.7-rootless}
+    restart: unless-stopped
+    environment:
+      GITEA__server__DOMAIN: ${GITEA_DOMAIN:-localhost}
+      GITEA__server__ROOT_URL: http://${GITEA_DOMAIN:-localhost}/
+      GITEA__server__SSH_DOMAIN: ${GITEA_SSH_DOMAIN:-localhost}
+      GITEA__server__SSH_PORT: ${GITEA_SSH_PORT:-2222}
+    ports:
+      - "${GITEA_HTTP_PORT:-3000}:3000"
+      - "${GITEA_SSH_PORT:-2222}:2222"
+    volumes:
+      - gitea_data:/var/lib/gitea
+      - gitea_config:/etc/gitea
+    networks:
+      - amigalab
+
+  meilisearch:
+    image: ${MEILISEARCH_IMAGE:-getmeili/meilisearch:v1.16.0}
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:?set MEILISEARCH_MASTER_KEY in docker/.env}
+    volumes:
+      - meilisearch_data:/meili_data
+    networks:
+      - amigalab
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.10.2-alpine}
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - amigalab
+
+  homepage:
+    image: ${HOMEPAGE_IMAGE:-ghcr.io/gethomepage/homepage:v1.7.0}
+    restart: unless-stopped
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: ${GITEA_DOMAIN:-localhost}
+    volumes:
+      - ./homepage:/app/config:ro
+    networks:
+      - amigalab
+
+volumes:
+  caddy_config:
+  caddy_data:
+  gitea_config:
+  gitea_data:
+  meilisearch_data:
+
+networks:
+  amigalab:
+    name: amigalab

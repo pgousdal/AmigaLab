@@ -1,0 +1,5 @@
+---
+- name: Install FS-UAE emulator packages
+  ansible.builtin.apt:
+    name: "{{ emulation_packages }}"
+    state: present

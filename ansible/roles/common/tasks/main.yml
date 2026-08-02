@@ -1,0 +1,28 @@
+---
+- name: Assert that the managed host is Debian
+  ansible.builtin.assert:
+    that: ansible_facts.distribution == 'Debian'
+    fail_msg: AmigaLab currently supports Debian hosts only.
+
+- name: Update APT package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install common workstation packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Create AmigaLab storage root
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}"
+    state: directory
+    mode: '0755'
+
+- name: Create AmigaLab storage directories
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ amigalab_storage_directories }}"

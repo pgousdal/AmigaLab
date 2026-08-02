@@ -1,0 +1,6 @@
+# Replace the placeholder paths with ROM and Workbench media you are licensed to use.
+amiga_model = A1200
+kickstart_file = /srv/amigalab/kickstarts/REPLACE_WITH_KICKSTART_3.1.rom
+floppy_drive_0 = /srv/amigalab/workbench/REPLACE_WITH_WORKBENCH_ADF.adf
+hard_drive_0 = /srv/amigalab/workbench/A1200
+hard_drive_1 = /srv/amigalab/shared

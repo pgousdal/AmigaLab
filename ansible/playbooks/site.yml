@@ -1,0 +1,10 @@
+---
+- name: Configure the AmigaLab Debian workstation
+  hosts: workstation
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - development
+    - emulation
+    - services

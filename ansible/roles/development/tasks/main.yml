@@ -1,0 +1,30 @@
+---
+- name: Install development packages
+  ansible.builtin.apt:
+    name: "{{ development_packages }}"
+    state: present
+
+- name: Configure Amiga cross-development support
+  ansible.builtin.import_tasks: amiga.yml
+
+- name: Configure the Visual Studio Code signing key
+  when: vscode_repository_enabled | bool
+  block:
+    - name: Download Microsoft package signing key
+      ansible.builtin.get_url:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        dest: /usr/share/keyrings/packages.microsoft.gpg
+        mode: '0644'
+
+    - name: Add Visual Studio Code APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main"
+        filename: vscode
+        state: present
+        update_cache: true
+
+- name: Install Visual Studio Code
+  ansible.builtin.apt:
+    name: code
+    state: present
+  when: vscode_install_package | bool

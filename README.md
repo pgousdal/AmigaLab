@@ -170,28 +170,36 @@ amigalab/
 │   └── homepage/
 │
 ├── fs-uae/
-│   ├── A500.fs-uae
-│   ├── A1200.fs-uae
-│   ├── A3000.fs-uae
-│   └── A4000.fs-uae
+│   └── README.md
 │
 ├── scripts/
-│   ├── sync-aminet.sh
-│   ├── update-whdload.sh
-│   ├── build-toolchains.sh
+│   ├── bootstrap.sh
 │   ├── backup.sh
 │   └── verify.sh
 │
 ├── docs/
+│   ├── architecture.md
+│   ├── development.md
+│   └── installation.md
 │
 ├── toolchains/
+│   └── README.md
 │
 ├── assets/
+│   └── README.md
 │
 ├── Makefile
 │
 └── README.md
 ```
+
+## Quick start
+
+On a fresh Debian installation, clone the repository and run `make install`.
+This installs Ansible and applies the workstation playbook. Then copy
+`docker/.env.example` to `docker/.env`, set a strong Meilisearch key, and run
+`make docker-up` (Docker Compose v2 is required). See [installation
+instructions](docs/installation.md) for the full setup.
 
 ---
 
