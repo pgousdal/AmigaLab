@@ -172,10 +172,76 @@ def command_plan_show(args: argparse.Namespace) -> int:
 def command_plan_approve(args: argparse.Namespace) -> int:
     store = PlanStore(Path(args.metadata_root))
     plan = store.load(args.plan_id)
-    if plan.conflicts:
+    if plan.conflicts or plan.status in {"cancelled", "superseded"}:
         raise ValueError("plan has unresolved conflicts")
+    store.event(plan, "approval", args.note)
     store.update(plan, status="approved")
     print(f"approved: {plan.id}")
+    return 0
+
+
+def command_plan_validate(args: argparse.Namespace) -> int:
+    plan = PlanStore(Path(args.metadata_root)).load(args.plan_id)
+    diagnostics = []
+    if plan.status in {"cancelled", "superseded", "completed"}:
+        diagnostics.append(f"plan status is {plan.status}")
+    if plan.import_mode not in {"media-only", "members-only", "media-and-members"}:
+        diagnostics.append("invalid import mode")
+    if any(Path(path).is_absolute() or ".." in Path(path).parts for path in plan.selected_entries):
+        diagnostics.append("unsafe selected path")
+    if plan.conflicts:
+        diagnostics.append("unresolved conflicts present")
+    if diagnostics:
+        print("invalid: " + "; ".join(diagnostics), file=sys.stderr)
+        return 1
+    print("valid")
+    return 0
+
+
+def command_plan_cancel(args: argparse.Namespace) -> int:
+    store = PlanStore(Path(args.metadata_root))
+    plan = store.load(args.plan_id)
+    if plan.status not in {"draft", "ready", "blocked", "approved"}:
+        raise ValueError("only draft, ready, blocked, or approved plans may be cancelled")
+    store.event(plan, "cancellation", args.reason)
+    store.update(plan, status="cancelled")
+    return 0
+
+
+def command_plan_execute(args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise PermissionError("plan execution requires explicit confirmation: pass --yes")
+    metadata_root = Path(args.metadata_root)
+    store = PlanStore(metadata_root)
+    plan = store.load(args.plan_id)
+    if plan.status != "approved":
+        raise ValueError("plan must be approved before execution")
+    if command_plan_validate(argparse.Namespace(plan_id=args.plan_id, metadata_root=str(metadata_root))) != 0:
+        raise ValueError("plan validation failed")
+    source = MetadataStore(metadata_root).get_source(plan.source_id)
+    if source is None:
+        raise ValueError("plan source is not registered")
+    if source_fingerprint(Path(source.locator)) != plan.source_fingerprint:
+        raise ValueError("source fingerprint changed since plan creation")
+    store.event(plan, "execution-start", "approved plan execution")
+    print(f"execution ready: {plan.id}; selected entries: {len(plan.selected_entries)}")
+    return 0
+
+
+def command_conflict_list(args: argparse.Namespace) -> int:
+    plan = PlanStore(Path(args.metadata_root)).load(args.plan_id)
+    import json
+    print(json.dumps(list(plan.conflicts), indent=2, sort_keys=True))
+    return 0
+
+
+def command_conflict_decide(args: argparse.Namespace) -> int:
+    if args.action not in {"unresolved", "skip", "reuse-identical", "record-provenance-only", "import-with-alternate-target", "abort-plan"}:
+        raise ValueError("unsupported conflict action")
+    store = PlanStore(Path(args.metadata_root))
+    plan = store.load(args.plan_id)
+    store.event(plan, "conflict-decision", f"{args.conflict_id}: {args.action}: {args.reason}")
+    print(f"recorded decision for {args.conflict_id}")
     return 0
 
 
@@ -259,7 +325,28 @@ def parser() -> argparse.ArgumentParser:
     plan_show.set_defaults(handler=command_plan_show)
     plan_approve = commands.add_parser("plan-approve")
     plan_approve.add_argument("plan_id")
+    plan_approve.add_argument("--note", default="")
     plan_approve.set_defaults(handler=command_plan_approve)
+    plan_validate = commands.add_parser("plan-validate")
+    plan_validate.add_argument("plan_id")
+    plan_validate.set_defaults(handler=command_plan_validate)
+    plan_cancel = commands.add_parser("plan-cancel")
+    plan_cancel.add_argument("plan_id")
+    plan_cancel.add_argument("--reason", default="cancelled by operator")
+    plan_cancel.set_defaults(handler=command_plan_cancel)
+    plan_execute = commands.add_parser("plan-execute")
+    plan_execute.add_argument("plan_id")
+    plan_execute.add_argument("--yes", action="store_true")
+    plan_execute.set_defaults(handler=command_plan_execute)
+    conflict_list = commands.add_parser("conflict-list")
+    conflict_list.add_argument("plan_id")
+    conflict_list.set_defaults(handler=command_conflict_list)
+    conflict_decide = commands.add_parser("conflict-decide")
+    conflict_decide.add_argument("conflict_id")
+    conflict_decide.add_argument("--plan-id", required=True)
+    conflict_decide.add_argument("--action", required=True)
+    conflict_decide.add_argument("--reason", default="operator decision")
+    conflict_decide.set_defaults(handler=command_conflict_decide)
     return command_parser
 
 

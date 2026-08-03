@@ -25,6 +25,17 @@ class ConflictDecision:
 
 
 @dataclass(frozen=True)
+class PlanEvent:
+    id: str
+    plan_id: str
+    kind: str
+    timestamp: str
+    plan_fingerprint: str
+    note: str = ""
+    tool_version: str = "amigalab-m2.5"
+
+
+@dataclass(frozen=True)
 class ImportPlan:
     id: str
     source_id: str
@@ -57,6 +68,7 @@ def create_plan(source_id: str, source_fingerprint: str, adapter_type: str, coll
 class PlanStore:
     def __init__(self, metadata_root: Path):
         self.root = metadata_root / "import-plans"
+        self.events = self.root / "events"
 
     def save(self, plan: ImportPlan) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -73,3 +85,10 @@ class PlanStore:
         updated = replace(plan, **changes)
         self.save(updated)
         return updated
+
+    def event(self, plan: ImportPlan, kind: str, note: str = "") -> PlanEvent:
+        self.events.mkdir(parents=True, exist_ok=True)
+        event = PlanEvent(str(uuid4()), plan.id, kind, datetime.now(timezone.utc).isoformat(), plan.fingerprint, note)
+        path = self.events / f"{event.id}.json"
+        path.write_text(json.dumps(asdict(event), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return event
