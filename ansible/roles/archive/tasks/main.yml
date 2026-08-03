@@ -6,6 +6,12 @@
     mode: '0755'
   loop: "{{ amigalab_archive_collections }}"
 
+- name: Create non-destructive import staging directory
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}/staging"
+    state: directory
+    mode: '0755'
+
 - name: Create preservation metadata directories
   ansible.builtin.file:
     path: "{{ amigalab_metadata_root }}/{{ item }}"

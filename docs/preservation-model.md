@@ -11,6 +11,9 @@ collection descriptions and manifests; `objects` holds logical object records;
 `verification` stores verification outcomes. No `.meta` or other AmigaLab file
 is written inside a preserved collection.
 
+JSON and YAML metadata are authoritative. SQLite and Meilisearch are optional,
+disposable indexes that must be rebuildable entirely from metadata.
+
 ## Concepts
 
 - **Collection** is an archive context such as Aminet, Fred Fish, or coverdisks.
