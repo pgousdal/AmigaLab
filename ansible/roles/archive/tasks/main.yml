@@ -1,4 +1,14 @@
 ---
+- name: Validate AmigaLab coexistence configuration
+  ansible.builtin.assert:
+    that:
+      - amigalab_deployment_mode in ['standalone', 'coexist']
+      - amigalab_storage_root is match('^/srv/amigalab(/|$)')
+      - amigalab_metadata_root is match('^/srv/amigalab(/|$)')
+      - amigalab_ports.values() | list | unique | length == amigalab_ports | length
+      - amigalab_shared.enabled or amigalab_deployment_mode == 'standalone'
+    fail_msg: Invalid AmigaLab namespacing, deployment mode, or port configuration.
+
 - name: Create archive collection directories
   ansible.builtin.file:
     path: "{{ amigalab_storage_root }}/{{ item }}"

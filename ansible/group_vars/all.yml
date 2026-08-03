@@ -47,6 +47,16 @@ amigalab_media_directories:
   - commercial
   - personal-backups
   - unknown
+amigalab_deployment_mode: standalone
+amigalab_shared:
+  enabled: false
+  root: /srv/retrolab/shared
+  download_cache: false
+  services: false
+amigalab_ports:
+  gitea_http: 3000
+  gitea_ssh: 2222
+  caddy_http: 80
 
 common_packages:
   - ca-certificates

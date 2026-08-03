@@ -45,6 +45,20 @@ dedicated media root; it does not copy commercial or unknown contents into a
 collection. `transaction-status`, `transaction-resume`, and
 `conflict-report` expose durable import state and operator decisions.
 
+Selective plans are canonical metadata and must be approved before execution:
+
+```sh
+python3 scripts/amigalab-import.py plan-create /mnt/source \
+  --source synthetic-source --collection aminet --mode members-only \
+  --path util/example.lha
+python3 scripts/amigalab-import.py plan-show PLAN_ID
+python3 scripts/amigalab-import.py plan-approve PLAN_ID
+```
+
+Commercial and licensed media defaults to `media-only`; explicit member import
+requires an operator-selected mode and license policy review. Blocking conflicts
+are never overwritten automatically.
+
 ## Indexes
 
 Build, delete, or query the optional SQLite index at

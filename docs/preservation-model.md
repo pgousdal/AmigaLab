@@ -13,6 +13,8 @@ is written inside a preserved collection.
 
 JSON and YAML metadata are authoritative. SQLite and Meilisearch are optional,
 disposable indexes that must be rebuildable entirely from metadata.
+Import plans and conflict decisions are also canonical metadata; they are never
+SQLite-only state.
 
 ## Concepts
 

@@ -15,7 +15,7 @@ class MetadataStore:
         self.root = root
 
     def ensure_layout(self) -> None:
-        for directory in ("collections", "objects", "sources", "imports", "verification", "media"):
+        for directory in ("collections", "objects", "sources", "imports", "verification", "media", "import-plans"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
 
     def _write(self, category: str, identifier: str, value: object) -> Path:

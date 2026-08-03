@@ -16,6 +16,7 @@ from preservation.models import Source
 from preservation.storage import MetadataStore
 from preservation.transactions import TransactionStore, new_transaction, source_fingerprint
 from preservation.policy import validate_license_profile
+from preservation.plans import PlanStore, create_plan
 from preservation.verification import append_verification, verify_object
 
 
@@ -152,6 +153,32 @@ def command_conflict_report(args: argparse.Namespace) -> int:
     return 1 if report else 0
 
 
+def command_plan_create(args: argparse.Namespace) -> int:
+    _, metadata_root, _ = roots(args)
+    selected = tuple(args.paths or [])
+    if not selected:
+        selected = tuple(entry.path for entry in __import__('preservation.sources', fromlist=['adapter_for']).adapter_for(Path(args.location), args.kind).entries() if entry.is_file)
+    plan = create_plan(args.source, source_fingerprint(Path(args.location)), args.kind or "directory", args.collection, selected, args.mode, tuple(args.include or []) + tuple(args.exclude or []))
+    PlanStore(metadata_root).save(plan)
+    print(plan.id)
+    return 0
+
+
+def command_plan_show(args: argparse.Namespace) -> int:
+    print(PlanStore(Path(args.metadata_root)).load(args.plan_id))
+    return 0
+
+
+def command_plan_approve(args: argparse.Namespace) -> int:
+    store = PlanStore(Path(args.metadata_root))
+    plan = store.load(args.plan_id)
+    if plan.conflicts:
+        raise ValueError("plan has unresolved conflicts")
+    store.update(plan, status="approved")
+    print(f"approved: {plan.id}")
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -217,6 +244,22 @@ def parser() -> argparse.ArgumentParser:
     conflicts.add_argument("--collection", required=True)
     conflicts.add_argument("--source", required=True)
     conflicts.set_defaults(handler=command_conflict_report)
+    plan = commands.add_parser("plan-create", help="create canonical selective import plan")
+    plan.add_argument("location")
+    plan.add_argument("--source", required=True)
+    plan.add_argument("--collection", required=True)
+    plan.add_argument("--kind")
+    plan.add_argument("--mode", choices=("media-only", "members-only", "media-and-members"), default="media-only")
+    plan.add_argument("--path", dest="paths", action="append")
+    plan.add_argument("--include", action="append")
+    plan.add_argument("--exclude", action="append")
+    plan.set_defaults(handler=command_plan_create)
+    plan_show = commands.add_parser("plan-show")
+    plan_show.add_argument("plan_id")
+    plan_show.set_defaults(handler=command_plan_show)
+    plan_approve = commands.add_parser("plan-approve")
+    plan_approve.add_argument("plan_id")
+    plan_approve.set_defaults(handler=command_plan_approve)
     return command_parser
 
 
