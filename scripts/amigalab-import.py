@@ -41,7 +41,8 @@ def command_source_add(args: argparse.Namespace) -> int:
 
 def command_scan(args: argparse.Namespace) -> int:
     archive_root, metadata_root, _ = roots(args)
-    print_preview(scan(Path(args.location), args.collection, MetadataStore(metadata_root), archive_root))
+    collection = args.collection or Path(args.location).name.lower()
+    print_preview(scan(Path(args.location), collection, MetadataStore(metadata_root), archive_root))
     return 0
 
 
@@ -88,7 +89,7 @@ def parser() -> argparse.ArgumentParser:
 
     scan_command = commands.add_parser("scan", help="read-only source preview")
     scan_command.add_argument("location")
-    scan_command.add_argument("--collection", required=True)
+    scan_command.add_argument("--collection", help="collection name (defaults to source directory name)")
     scan_command.set_defaults(handler=command_scan)
 
     import_command = commands.add_parser("import", help="copy-only import after confirmation")
