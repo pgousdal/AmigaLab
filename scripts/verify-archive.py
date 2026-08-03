@@ -18,9 +18,10 @@ def _report(label: str, paths: tuple[str, ...]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("collection", type=Path, help="collection directory to verify")
+    parser.add_argument("--metadata-dir", required=True, type=Path, help="separate directory containing the manifest")
     args = parser.parse_args()
     try:
-        result = verify_collection(args.collection)
+        result = verify_collection(args.collection, args.metadata_dir)
     except ArchiveError as error:
         print(f"error: {error}", file=sys.stderr)
         return EXIT_INVALID

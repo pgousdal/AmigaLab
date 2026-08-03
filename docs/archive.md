@@ -3,20 +3,30 @@
 M2.0 defines the reproducible metadata and integrity structure shared by every
 preservation collection. It does not download or distribute archive content.
 
+## Preservation rule
+
+Collections retain their original historical organization. Import and metadata
+work must not rename, move, normalize, unpack, or replace archived files.
+Original directory paths, filenames, and accompanying metadata remain part of
+the collection: for example, an Aminet package and its adjacent `.readme` file
+are both preserved at their original paths. AmigaLab enrichment belongs only in
+separate, additive metadata; it must never rewrite the source archive layout.
+
 ## Collection layout
 
 Each supported collection under `/srv/amigalab` (`aminet`, `fish`, `magazines`,
 `docs`, `ndk`, `adf`, `hdf`, `demos`, `source`, `workbench`, and `kickstarts`)
-contains three control files:
+is paired with a separate metadata directory:
 
 ```text
-collection.yml
-manifest.json
-checksums.sha256
+/srv/amigalab/metadata/collections/aminet/
+├── collection.yml
+├── manifest.json
+└── checksums.sha256
 ```
 
-Run `make archive-init` to create missing collection directories and default
-control files. Existing metadata and manifests are never overwritten by Ansible.
+Run `make archive-init` to create missing collection and metadata directories.
+Existing metadata and manifests are never overwritten by Ansible.
 
 ## Metadata schema
 
@@ -36,8 +46,9 @@ make manifest COLLECTION=aminet
 
 The generator recursively records each data file's POSIX-relative path, byte
 size, SHA-256 digest, and nanosecond modification time in deterministic path
-order. It also writes a matching `checksums.sha256`. The three control files are
-excluded from the manifest so regeneration is stable.
+order. It also writes a matching `checksums.sha256` under separate metadata.
+This observes all original files, including sidecar metadata such as `.readme`
+files, without modifying or excluding any of them.
 
 Verify content later with:
 

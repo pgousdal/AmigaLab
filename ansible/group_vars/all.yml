@@ -30,6 +30,13 @@ amigalab_archive_collections:
   - source
   - workbench
   - kickstarts
+amigalab_metadata_root: "{{ amigalab_storage_root }}/metadata"
+amigalab_metadata_directories:
+  - collections
+  - objects
+  - sources
+  - imports
+  - verification
 
 common_packages:
   - ca-certificates

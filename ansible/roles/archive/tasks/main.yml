@@ -6,26 +6,40 @@
     mode: '0755'
   loop: "{{ amigalab_archive_collections }}"
 
-- name: Create default archive metadata when absent
+- name: Create preservation metadata directories
+  ansible.builtin.file:
+    path: "{{ amigalab_metadata_root }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ amigalab_metadata_directories }}"
+
+- name: Create separate collection metadata directories
+  ansible.builtin.file:
+    path: "{{ amigalab_metadata_root }}/collections/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ amigalab_archive_collections }}"
+
+- name: Create default separate collection metadata when absent
   ansible.builtin.template:
     src: collection.yml.j2
-    dest: "{{ amigalab_storage_root }}/{{ item }}/collection.yml"
+    dest: "{{ amigalab_metadata_root }}/collections/{{ item }}/collection.yml"
     mode: '0644'
     force: false
   loop: "{{ amigalab_archive_collections }}"
 
-- name: Create empty archive manifests when absent
+- name: Create empty separate archive manifests when absent
   ansible.builtin.copy:
     content: "{\n  \"files\": [],\n  \"schema_version\": 1\n}\n"
-    dest: "{{ amigalab_storage_root }}/{{ item }}/manifest.json"
+    dest: "{{ amigalab_metadata_root }}/collections/{{ item }}/manifest.json"
     mode: '0644'
     force: false
   loop: "{{ amigalab_archive_collections }}"
 
-- name: Create empty archive checksum files when absent
+- name: Create empty separate archive checksum files when absent
   ansible.builtin.copy:
     content: ''
-    dest: "{{ amigalab_storage_root }}/{{ item }}/checksums.sha256"
+    dest: "{{ amigalab_metadata_root }}/collections/{{ item }}/checksums.sha256"
     mode: '0644'
     force: false
   loop: "{{ amigalab_archive_collections }}"

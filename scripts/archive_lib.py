@@ -1,4 +1,10 @@
-"""Deterministic manifest generation and verification for archive collections."""
+"""Deterministic, non-destructive metadata for archive collections.
+
+Collection data is treated as immutable historical input. This module writes
+AmigaLab controls only to a separate metadata directory; every original nested
+path, filename, and accompanying file (including Aminet ``.readme`` files) is
+retained verbatim and represented in the manifest.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +15,6 @@ from pathlib import Path
 from typing import Iterable
 
 
-CONTROL_FILENAMES = frozenset({"collection.yml", "manifest.json", "checksums.sha256"})
 MANIFEST_SCHEMA_VERSION = 1
 EXIT_OK = 0
 EXIT_INVALID = 1
@@ -60,14 +65,10 @@ def _relative_path(collection: Path, path: Path) -> str:
     return path.relative_to(collection).as_posix()
 
 
-def _is_control_file(collection: Path, path: Path) -> bool:
-    relative = path.relative_to(collection)
-    return len(relative.parts) == 1 and relative.name in CONTROL_FILENAMES
-
-
 def _data_files(collection: Path) -> Iterable[Path]:
+    """Yield every original file without rewriting or reorganizing it."""
     for path in sorted(collection.rglob("*"), key=lambda candidate: candidate.as_posix()):
-        if path.is_file() and not _is_control_file(collection, path):
+        if path.is_file():
             yield path
 
 
@@ -89,23 +90,24 @@ def manifest_entry(collection: Path, path: Path) -> ManifestEntry:
     )
 
 
-def build_collection_manifest(collection: Path) -> tuple[ManifestEntry, ...]:
+def build_collection_manifest(collection: Path, metadata_directory: Path) -> tuple[ManifestEntry, ...]:
     collection = collection.resolve()
     if not collection.is_dir():
         raise ArchiveError(f"Collection directory does not exist: {collection}")
     entries = tuple(sorted((manifest_entry(collection, path) for path in _data_files(collection))))
+    metadata_directory.mkdir(parents=True, exist_ok=True)
     payload = {"files": [asdict(entry) for entry in entries], "schema_version": MANIFEST_SCHEMA_VERSION}
-    (collection / "manifest.json").write_text(
+    (metadata_directory / "manifest.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    (collection / "checksums.sha256").write_text(
+    (metadata_directory / "checksums.sha256").write_text(
         "".join(f"{entry.sha256}  {entry.path}\n" for entry in entries), encoding="utf-8"
     )
     return entries
 
 
-def load_manifest(collection: Path) -> tuple[ManifestEntry, ...]:
-    manifest_path = collection / "manifest.json"
+def load_manifest(metadata_directory: Path) -> tuple[ManifestEntry, ...]:
+    manifest_path = metadata_directory / "manifest.json"
     if not manifest_path.is_file():
         raise ArchiveError(f"Manifest file is missing: {manifest_path}")
     try:
@@ -120,8 +122,8 @@ def load_manifest(collection: Path) -> tuple[ManifestEntry, ...]:
     return entries
 
 
-def load_checksums(collection: Path) -> dict[str, str]:
-    checksum_path = collection / "checksums.sha256"
+def load_checksums(metadata_directory: Path) -> dict[str, str]:
+    checksum_path = metadata_directory / "checksums.sha256"
     if not checksum_path.is_file():
         raise ArchiveError(f"Checksum file is missing: {checksum_path}")
     entries: dict[str, str] = {}
@@ -140,12 +142,12 @@ def load_checksums(collection: Path) -> dict[str, str]:
     return entries
 
 
-def verify_collection(collection: Path) -> VerificationResult:
+def verify_collection(collection: Path, metadata_directory: Path) -> VerificationResult:
     collection = collection.resolve()
     if not collection.is_dir():
         raise ArchiveError(f"Collection directory does not exist: {collection}")
-    expected_entries = load_manifest(collection)
-    checksum_entries = load_checksums(collection)
+    expected_entries = load_manifest(metadata_directory)
+    checksum_entries = load_checksums(metadata_directory)
     expected_by_path = {entry.path: entry for entry in expected_entries}
     actual_by_path = {_relative_path(collection, path): path for path in _data_files(collection)}
 

@@ -1,6 +1,7 @@
 ARCHIVE_ROOT ?= /srv/amigalab
 COLLECTION ?= aminet
 COLLECTION_PATH = $(ARCHIVE_ROOT)/$(COLLECTION)
+COLLECTION_METADATA_PATH = $(ARCHIVE_ROOT)/metadata/collections/$(COLLECTION)
 
 .PHONY: install ansible docker-up docker-down verify backup archive-init manifest verify-archive
 
@@ -25,7 +26,7 @@ backup:
 archive-init: ansible
 
 manifest:
-	python3 scripts/build-manifest.py "$(COLLECTION_PATH)"
+	python3 scripts/build-manifest.py "$(COLLECTION_PATH)" --metadata-dir "$(COLLECTION_METADATA_PATH)"
 
 verify-archive:
-	python3 scripts/verify-archive.py "$(COLLECTION_PATH)"
+	python3 scripts/verify-archive.py "$(COLLECTION_PATH)" --metadata-dir "$(COLLECTION_METADATA_PATH)"
