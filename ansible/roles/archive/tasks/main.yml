@@ -12,6 +12,19 @@
     state: directory
     mode: '0755'
 
+- name: Create original media root
+  ansible.builtin.file:
+    path: "{{ amigalab_media_root }}"
+    state: directory
+    mode: '0755'
+
+- name: Create configurable original media categories
+  ansible.builtin.file:
+    path: "{{ amigalab_media_root }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ amigalab_media_directories }}"
+
 - name: Create preservation metadata directories
   ansible.builtin.file:
     path: "{{ amigalab_metadata_root }}/{{ item }}"

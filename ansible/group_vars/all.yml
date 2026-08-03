@@ -37,6 +37,16 @@ amigalab_metadata_directories:
   - sources
   - imports
   - verification
+amigalab_media_root: /srv/amigalab/media
+amigalab_media_directories:
+  - amiga-forever
+  - aminet-cd
+  - aminet-set
+  - fred-fish
+  - coverdisks
+  - commercial
+  - personal-backups
+  - unknown
 
 common_packages:
   - ca-certificates

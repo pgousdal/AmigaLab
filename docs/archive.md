@@ -50,6 +50,10 @@ order. It also writes a matching `checksums.sha256` under separate metadata.
 This observes all original files, including sidecar metadata such as `.readme`
 files, without modifying or excluding any of them.
 
+Original source images belong under `/srv/amigalab/media`; staging belongs under
+`/srv/amigalab/staging`. Neither location is a substitute for canonical JSON
+metadata.
+
 Verify content later with:
 
 ```sh

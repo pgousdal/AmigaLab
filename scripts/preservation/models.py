@@ -29,6 +29,47 @@ class Source:
     name: str
     kind: str
     locator: str
+    license_profile: str = "unknown"
+    media_classification: str = "unknown"
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class MediaRecord:
+    id: str
+    title: str
+    original_filename: str
+    size: int
+    hashes: Hashes
+    license_profile: str = "unknown"
+    media_classification: str = "unknown"
+    edition: str = ""
+    version: str = ""
+    publisher: str = ""
+    release_year: int | None = None
+    source_id: str = ""
+    original_path: str = ""
+    imported_at: str = ""
+    notes: str = ""
+    redistributable: bool = False
+    export_allowed: bool = False
+
+
+@dataclass(frozen=True)
+class ImportTransaction:
+    id: str
+    source_id: str
+    source_fingerprint: str
+    destination_collection: str
+    operation: str
+    started_at: str
+    updated_at: str
+    phase: str
+    completed_entries: tuple[str, ...] = field(default_factory=tuple)
+    pending_entries: tuple[str, ...] = field(default_factory=tuple)
+    failed_entries: tuple[str, ...] = field(default_factory=tuple)
+    conflict_entries: tuple[str, ...] = field(default_factory=tuple)
+    result: str = ""
 
 
 @dataclass(frozen=True)

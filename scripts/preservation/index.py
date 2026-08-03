@@ -17,12 +17,16 @@ def build_index(metadata_root: Path, database_path: Path) -> int:
             "CREATE TABLE files (object_id TEXT, collection TEXT, path TEXT, sha256 TEXT);"
             "CREATE INDEX files_sha256 ON files (sha256);"
         )
+        connection.execute("CREATE TABLE IF NOT EXISTS media (id TEXT, title TEXT, sha256 TEXT, license_profile TEXT)")
+        connection.execute("DELETE FROM media")
         rows = [
             (object_.id, object_.original_collection, file.original_relative_path, file.hashes.sha256)
             for object_ in MetadataStore(metadata_root).list_objects()
             for file in object_.files
         ]
         connection.executemany("INSERT INTO files VALUES (?, ?, ?, ?)", rows)
+        media_rows = [(item["id"], item["title"], item["hashes"]["sha256"], item["license_profile"]) for item in MetadataStore(metadata_root)._read_json("media")]
+        connection.executemany("INSERT INTO media VALUES (?, ?, ?, ?)", media_rows)
     return len(rows)
 
 

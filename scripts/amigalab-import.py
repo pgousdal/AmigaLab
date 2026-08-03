@@ -6,11 +6,16 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import shutil
 import sys
 
 from preservation.importer import SUPPORTED_SOURCE_KINDS, import_source, scan
+from preservation.conflicts import conflict_report
+from preservation.media import discover_candidates, register_media
 from preservation.models import Source
 from preservation.storage import MetadataStore
+from preservation.transactions import TransactionStore, new_transaction, source_fingerprint
+from preservation.policy import validate_license_profile
 from preservation.verification import append_verification, verify_object
 
 
@@ -32,9 +37,10 @@ def print_preview(preview: object) -> None:
 def command_source_add(args: argparse.Namespace) -> int:
     if args.kind not in SUPPORTED_SOURCE_KINDS:
         raise ValueError(f"Unsupported source kind: {args.kind}")
+    validate_license_profile(args.license_profile)
     _, metadata_root, _ = roots(args)
     store = MetadataStore(metadata_root)
-    store.save_source(Source(args.id, args.name, args.kind, args.location))
+    store.save_source(Source(args.id, args.name, args.kind, args.location, args.license_profile, args.media_classification, args.notes))
     print(f"Registered source: {args.id}")
     return 0
 
@@ -52,7 +58,37 @@ def command_import(args: argparse.Namespace) -> int:
     source = store.get_source(args.source)
     if source is None:
         raise ValueError(f"Unknown source ID: {args.source}. Register it with source-add first.")
-    print_preview(import_source(Path(args.location), args.collection, source, store, archive_root, staging_root, args.yes))
+    location = Path(args.location)
+    preview = scan(location, args.collection, store, archive_root)
+    transaction = new_transaction(source.id, source_fingerprint(location), args.collection, "import", preview.relative_paths)
+    TransactionStore(metadata_root).save(transaction)
+    try:
+        print_preview(import_source(location, args.collection, source, store, archive_root, staging_root, args.yes))
+    except Exception:
+        TransactionStore(metadata_root).update(transaction, phase="failed", result="failed")
+        raise
+    TransactionStore(metadata_root).update(transaction, phase="completed", completed_entries=preview.relative_paths, pending_entries=(), result="success")
+    return 0
+
+
+def command_transaction_status(args: argparse.Namespace) -> int:
+    transaction = TransactionStore(Path(args.metadata_root)).load(args.transaction_id)
+    print(transaction)
+    return 0
+
+
+def command_transaction_resume(args: argparse.Namespace) -> int:
+    metadata_root = Path(args.metadata_root)
+    store = MetadataStore(metadata_root)
+    transaction = TransactionStore(metadata_root).load(args.transaction_id)
+    source = store.get_source(transaction.source_id)
+    if source is None:
+        raise ValueError(f"source metadata is missing: {transaction.source_id}")
+    location = Path(source.locator)
+    if source_fingerprint(location) != transaction.source_fingerprint:
+        raise ValueError("source changed since transaction scan; resume refused")
+    print_preview(import_source(location, transaction.destination_collection, source, store, Path(args.archive_root), Path(args.staging_root), True))
+    TransactionStore(metadata_root).update(transaction, phase="completed", result="success")
     return 0
 
 
@@ -72,6 +108,50 @@ def command_verify(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def command_media_scan(args: argparse.Namespace) -> int:
+    from preservation.sources import adapter_for
+    adapter = adapter_for(Path(args.location), args.kind)
+    try:
+        entries = list(adapter.entries())
+        print(f"Media entries: {len(entries)}")
+        for entry in entries:
+            if entry.unsupported_reason:
+                print(f"unsupported: {entry.path}: {entry.unsupported_reason}")
+            else:
+                print(f"{entry.path}\t{entry.size}")
+    finally:
+        adapter.close()
+    return 0
+
+
+def command_media_import(args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise PermissionError("media import requires explicit confirmation: pass --yes")
+    _, metadata_root, _ = roots(args)
+    store = MetadataStore(metadata_root)
+    media = register_media(Path(args.location), args.source, args.title, args.license_profile, notes=args.notes)
+    media_destination = Path(args.media_root) / ("unknown" if media.license_profile == "unknown" else media.license_profile) / media.original_filename
+    media_destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(args.location, media_destination)
+    store.save_media(media)
+    print(f"Registered original media: {media.id}")
+    return 0
+
+
+def command_discover(args: argparse.Namespace) -> int:
+    for candidate in discover_candidates(Path(args.location)):
+        print(candidate)
+    return 0
+
+
+def command_conflict_report(args: argparse.Namespace) -> int:
+    import json
+    _, metadata_root, _ = roots(args)
+    report = conflict_report(Path(args.location), args.collection, Path(args.archive_root), args.source, MetadataStore(metadata_root))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 1 if report else 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -85,6 +165,9 @@ def parser() -> argparse.ArgumentParser:
     source_add.add_argument("--name", required=True)
     source_add.add_argument("--kind", required=True, choices=sorted(SUPPORTED_SOURCE_KINDS))
     source_add.add_argument("--location", required=True)
+    source_add.add_argument("--license-profile", default="unknown")
+    source_add.add_argument("--media-classification", default="unknown")
+    source_add.add_argument("--notes", default="")
     source_add.set_defaults(handler=command_source_add)
 
     scan_command = commands.add_parser("scan", help="read-only source preview")
@@ -103,6 +186,37 @@ def parser() -> argparse.ArgumentParser:
     verify_command.add_argument("--collection", required=True)
     verify_command.add_argument("--algorithm", default="sha256", choices=("md5", "sha1", "sha256", "sha512"))
     verify_command.set_defaults(handler=command_verify)
+
+    media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
+    media_scan.add_argument("location")
+    media_scan.add_argument("--kind")
+    media_scan.set_defaults(handler=command_media_scan)
+
+    media_import = commands.add_parser("media-import", help="register original media only")
+    media_import.add_argument("location")
+    media_import.add_argument("--source", required=True)
+    media_import.add_argument("--title", required=True)
+    media_import.add_argument("--license-profile", default="unknown")
+    media_import.add_argument("--notes", default="")
+    media_import.add_argument("--yes", action="store_true")
+    media_import.add_argument("--media-root", default=f"{default_root}/media")
+    media_import.set_defaults(handler=command_media_import)
+
+    discover = commands.add_parser("discover", help="conservative ROM/media candidates")
+    discover.add_argument("location")
+    discover.set_defaults(handler=command_discover)
+
+    status = commands.add_parser("transaction-status", help="show canonical transaction state")
+    status.add_argument("transaction_id")
+    status.set_defaults(handler=command_transaction_status)
+    resume = commands.add_parser("transaction-resume", help="resume an unchanged source transaction")
+    resume.add_argument("transaction_id")
+    resume.set_defaults(handler=command_transaction_resume)
+    conflicts = commands.add_parser("conflict-report", help="write structured path conflict JSON")
+    conflicts.add_argument("location")
+    conflicts.add_argument("--collection", required=True)
+    conflicts.add_argument("--source", required=True)
+    conflicts.set_defaults(handler=command_conflict_report)
     return command_parser
 
 

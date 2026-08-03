@@ -39,6 +39,12 @@ python3 scripts/amigalab-import.py import /mnt/Aminet-CD \
 
 Use `verify --collection aminet` to append object-level verification events.
 
+For original media, use `media-scan` and `media-import`. The latter requires
+`--yes`, records a media hash/license profile, and copies the image only to the
+dedicated media root; it does not copy commercial or unknown contents into a
+collection. `transaction-status`, `transaction-resume`, and
+`conflict-report` expose durable import state and operator decisions.
+
 ## Indexes
 
 Build, delete, or query the optional SQLite index at

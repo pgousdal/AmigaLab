@@ -7,7 +7,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from .models import Hashes, ImportEvent, PreservedFile, PreservationObject, Source, VerificationEvent
+from .models import Hashes, ImportEvent, ImportTransaction, MediaRecord, PreservedFile, PreservationObject, Source, VerificationEvent
 
 
 class MetadataStore:
@@ -15,7 +15,7 @@ class MetadataStore:
         self.root = root
 
     def ensure_layout(self) -> None:
-        for directory in ("collections", "objects", "sources", "imports", "verification"):
+        for directory in ("collections", "objects", "sources", "imports", "verification", "media"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
 
     def _write(self, category: str, identifier: str, value: object) -> Path:
@@ -41,6 +41,12 @@ class MetadataStore:
 
     def save_verification(self, event: VerificationEvent) -> Path:
         return self._write("verification", event.id, event)
+
+    def save_media(self, media: MediaRecord) -> Path:
+        return self._write("media", media.id, media)
+
+    def save_transaction(self, transaction: ImportTransaction) -> Path:
+        return self._write("imports", f"transaction-{transaction.id}", transaction)
 
     def get_source(self, source_id: str) -> Source | None:
         for item in self._read_json("sources"):
