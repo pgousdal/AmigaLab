@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 import tarfile
 from typing import BinaryIO, Iterator
@@ -116,7 +117,10 @@ class IsoAdapter:
                 yield SourceEntry(path, 0, None)
 
     def open(self, entry: SourceEntry) -> BinaryIO:
-        raise RuntimeError("streaming ISO member reads require a pycdlib record adapter")
+        buffer = BytesIO()
+        self.handle.get_file_from_iso_fp(buffer, iso_path="/" + entry.path)
+        buffer.seek(0)
+        return buffer
 
     def close(self) -> None:
         self.handle.close()
