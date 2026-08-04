@@ -12,6 +12,8 @@ from .models import PreservationObject, Source
 from .storage import MetadataStore
 from .models import TransactionEntry
 from .transactions import TransactionStore
+from .events import EventStore, VerificationRecord, RelationshipRecord
+from dataclasses import asdict
 
 
 SUPPORTED_SOURCE_KINDS = frozenset({"directory", "iso", "archive", "mounted"})
@@ -133,6 +135,7 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
     copied = reused = 0
     transaction_id = transaction_id or f"selected-{source.id}"
     transaction_store = TransactionStore(store.root)
+    event_store = EventStore(store.root)
     adapter = None if location.is_dir() else __import__("preservation.sources", fromlist=["adapter_for"]).adapter_for(location, source.kind)
     try:
       for relative_path in selected:
@@ -169,6 +172,14 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
                 raise ValueError(f"blocking destination conflict: {relative_path}")
             store.save_import(event)
             transaction_store.transition(entry, "reused", "verifying", "reuse-identical")
+            file_record = candidate.files[0]
+            operation_key = f"{entry.id}:{target}:{file_record.hashes.sha256}:reuse-validation"
+            event_store.verification(VerificationRecord(
+                id=sha256(operation_key.encode()).hexdigest(), operation_key=operation_key,
+                transaction_id=transaction_id, entry_id=entry.id, destination_path=str(target),
+                context="reuse-validation", expected_hashes=asdict(file_record.hashes),
+                observed_hashes=asdict(file_record.hashes), success=True,
+            ))
             reused += 1
             continue
         for file in candidate.files:
@@ -190,6 +201,31 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
         transaction_store.transition(entry, "verifying", "verifying", "verify-destination")
         store.save_import(event)
         store.save_object(candidate)
+        file_record = candidate.files[0]
+        operation_key = f"{entry.id}:{target}:{file_record.hashes.sha256}:initial-import"
+        event_store.verification(VerificationRecord(
+            id=sha256(operation_key.encode()).hexdigest(), operation_key=operation_key,
+            transaction_id=transaction_id, entry_id=entry.id, destination_path=str(target),
+            context="initial-import", expected_hashes=asdict(file_record.hashes),
+            observed_hashes=asdict(file_record.hashes), success=True,
+        ))
+        if source.kind not in {"directory", "mounted"}:
+            event_store.relationship(RelationshipRecord(
+                id=sha256(f"{entry.id}:imported-from:{source.id}:{relative_path}".encode()).hexdigest(),
+                operation_key=f"{entry.id}:imported-from:{source.id}:{relative_path}",
+                relationship_type="imported-from", media_id=source.id,
+                object_id=candidate.id, source_id=source.id, transaction_id=transaction_id,
+                original_member_path=relative_path, imported_target_path=str(target),
+            ))
+            for sidecar in candidate.files[1:]:
+                sidecar_key = f"{entry.id}:sidecar-of:{sidecar.original_relative_path}"
+                event_store.relationship(RelationshipRecord(
+                    id=sha256(sidecar_key.encode()).hexdigest(), operation_key=sidecar_key,
+                    relationship_type="sidecar-of", media_id=source.id,
+                    object_id=candidate.id, source_id=source.id, transaction_id=transaction_id,
+                    original_member_path=sidecar.original_relative_path,
+                    imported_target_path=str(destination_root / sidecar.original_relative_path),
+                ))
         transaction_store.transition(entry, "metadata-writing", "metadata-writing", "write-object")
         transaction_store.transition(entry, "completed", "completed", "complete-entry")
         copied += 1

@@ -69,3 +69,23 @@ python3 -m scripts.preservation.index build-index
 python3 -m scripts.preservation.index query DiskMaster
 python3 -m scripts.preservation.index drop-index
 ```
+# Recovery and durable operations
+
+Approved imports are represented by canonical transaction entries.  Recovery
+uses the persisted entry state rather than rescanning selection rules.  Staging
+files are transaction-owned temporary files; destination placement uses an
+atomic temporary copy followed by verification.  A resume validates staged
+content, reuses verified destinations, and completes only missing metadata,
+provenance, relationships, import events, and verification events.
+
+Every imported file is hashed with MD5, SHA-1, SHA-256, and SHA-512 in one
+streaming pass where practical.  Verification and media/member relationship
+records are stored under `metadata/` and are idempotent by operation key, so a
+resume does not duplicate successful history.  Media-and-members imports keep
+the media entry and member entries independent: a failed member can be retried
+without recopying an already verified media image.
+
+Use `transaction-status` to inspect entry-derived counters and
+`transaction-reconcile` for a read-only consistency report.  Temporary files
+are never interpreted as preserved content, and differing destination content
+is always a blocking conflict rather than an overwrite.

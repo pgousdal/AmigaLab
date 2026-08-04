@@ -22,6 +22,12 @@
     state: directory
     mode: '0755'
 
+- name: Create transaction-specific staging directory
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}/staging/transactions"
+    state: directory
+    mode: '0755'
+
 - name: Create original media root
   ansible.builtin.file:
     path: "{{ amigalab_media_root }}"

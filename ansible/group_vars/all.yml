@@ -37,6 +37,16 @@ amigalab_metadata_directories:
   - sources
   - imports
   - verification
+  - transactions
+  - transaction-entries
+  - transaction-events
+  - retry-events
+  - import-events
+  - verification-events
+  - media
+  - media-relationships
+  - sidecar-relationships
+  - execution-sets
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
