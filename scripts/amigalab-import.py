@@ -39,6 +39,7 @@ from preservation.external.storage import ExternalStorage
 from preservation.verification_reports import verify_collection, VerificationReportStore, reconciliation, repair_plan
 from preservation.traces import object_trace, file_trace, media_trace as enriched_media_trace
 from preservation.relationship_backfill import create_plan as create_relationship_backfill_plan
+from preservation.operations import OperationsRun, OperationsStore, OperationsLock, operations_preview, retention_plan, validate_operations_config, now
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -645,6 +646,102 @@ def command_relationship_backfill(args: argparse.Namespace) -> int:
     print(json.dumps(result, indent=2, sort_keys=True)); return 0 if not result.get("blocking_findings") else 1
 
 
+def _operations_config() -> dict:
+    # Installation defaults are deliberately disabled; deployments may wrap the
+    # CLI with a validated configuration provider without changing this command.
+    return {"enabled": os.environ.get("AMIGALAB_OPERATIONS_ENABLED", "false").lower() == "true", "operations": {}}
+
+
+def command_operations_preview(args: argparse.Namespace) -> int:
+    print(json.dumps(operations_preview(_operations_config(), Path(args.metadata_root)), indent=2, sort_keys=True)); return 0
+
+
+def command_operations_status(args: argparse.Namespace) -> int:
+    store = OperationsStore(Path(args.metadata_root)); runs = list(store.list_runs())
+    result = {"enabled": _operations_config()["enabled"], "run_count": len(runs), "last_run": runs[-1] if runs else None,
+              "active_locks": [str(p) for p in (Path(args.metadata_root).parent / "run" / "locks").glob("amigalab-*.lock")],
+              "pending_draft_mirror_plans": len([p for p in ExternalStorage(Path(args.metadata_root)).list("mirror-plans") if p.get("status") == "draft"]),
+              "pending_import_plans": len([p for p in ExternalStorage(Path(args.metadata_root)).list("import-plans") if p.get("status") in {"draft", "ready", "approved"}])}
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0
+
+
+def command_operations_history(args: argparse.Namespace) -> int:
+    print(json.dumps(list(OperationsStore(Path(args.metadata_root)).list_runs()), indent=2, sort_keys=True)); return 0
+
+
+def command_operations_report(args: argparse.Namespace) -> int:
+    run = OperationsStore(Path(args.metadata_root)).get_run(args.run_id)
+    if run is None: raise ValueError(f"unknown operations run: {args.run_id}")
+    print(json.dumps(run, indent=2, sort_keys=True)); return 0
+
+
+def _run_record(args, operation: str, target: str) -> OperationsRun:
+    run_id = __import__('hashlib').sha256(f"{operation}:{target}:{now()}".encode()).hexdigest()
+    run = OperationsRun(run_id, operation, getattr(args, "trigger", "manual"), target, now(), now(), state="running")
+    store = OperationsStore(Path(args.metadata_root)); store.save_run(run); store.event(run.id, "run-start", operation_name=operation, target=target)
+    return run
+
+
+def command_scheduled_verify(args: argparse.Namespace) -> int:
+    run = _run_record(args, "verification", args.collection); store = OperationsStore(Path(args.metadata_root))
+    try:
+        with OperationsLock(Path(args.metadata_root).parent, f"verify-{args.collection}"):
+            report = verify_collection(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root), args.policy)
+            report_id = VerificationReportStore(Path(args.metadata_root)).save(report).stem
+            final = __import__('dataclasses').replace(run, state="completed" if report.result == "success" else "completed-with-warnings", result=report.result, completed_at=now(), updated_at=now(), created_record_ids=(report_id,))
+            store.save_run(final)
+            print(json.dumps({"run": asdict(final), "report": asdict(report)}, indent=2, sort_keys=True)); return 0 if report.result == "success" else 1
+    except RuntimeError as error:
+        final = __import__('dataclasses').replace(run, state="blocked", result=str(error), completed_at=now(), updated_at=now(), errors=(str(error),)); store.save_run(final); raise
+
+
+def command_scheduled_source_check(args: argparse.Namespace) -> int:
+    run = _run_record(args, "source-check", args.source_id); store = OperationsStore(Path(args.metadata_root))
+    try:
+        with OperationsLock(Path(args.metadata_root).parent, f"external-source-{args.source_id}"):
+            source_args = dict(vars(args)); source_args["json"] = True
+            result = command_external_source_check(argparse.Namespace(**source_args))
+            final = __import__('dataclasses').replace(run, state="completed", result="success", completed_at=now(), updated_at=now())
+            store.save_run(final); return result
+    except Exception as error:
+        final = __import__('dataclasses').replace(run, state="failed", result="failed", completed_at=now(), updated_at=now(), errors=(str(error),)); store.save_run(final); raise
+
+
+def command_scheduled_reconcile(args: argparse.Namespace) -> int:
+    run = _run_record(args, "reconciliation", args.collection); store = OperationsStore(Path(args.metadata_root))
+    result = reconciliation(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root))
+    final = __import__('dataclasses').replace(run, state="completed", result="success" if not result.get("blocking") else "warnings", completed_at=now(), updated_at=now())
+    store.save_run(final); print(json.dumps({"run": asdict(final), "reconciliation": result}, indent=2, sort_keys=True)); return 0 if not result.get("blocking") else 1
+
+
+def command_retention_plan(args: argparse.Namespace) -> int:
+    plan = retention_plan(Path(args.metadata_root)); ExternalStorage(Path(args.metadata_root)).put("retention-plans", plan["id"], plan); print(json.dumps(plan, indent=2, sort_keys=True)); return 0
+
+
+def command_retention_execute(args: argparse.Namespace) -> int:
+    if not args.yes: raise PermissionError("retention execution requires explicit confirmation: pass --yes")
+    plan = ExternalStorage(Path(args.metadata_root)).get("retention-plans", args.plan_id)
+    if plan.get("blocking_findings"): raise ValueError("retention plan is blocked")
+    run = _run_record(args, "retention", args.plan_id)
+    removed = []
+    cache_root = (Path(args.metadata_root).parent / "cache" / "external-providers").resolve()
+    for candidate in plan.get("candidates", []):
+        path = Path(candidate["path"])
+        try:
+            safe = path.resolve().is_relative_to(cache_root)
+        except OSError:
+            safe = False
+        if safe and path.is_file() and not path.is_symlink():
+            path.unlink()
+            removed.append(str(path))
+    final = __import__('dataclasses').replace(run, state="completed", result="success", completed_at=now(), updated_at=now(), created_record_ids=tuple(removed))
+    OperationsStore(Path(args.metadata_root)).save_run(final); print(json.dumps(asdict(final), indent=2, sort_keys=True)); return 0
+
+
+def command_retention_report(args: argparse.Namespace) -> int:
+    return command_operations_report(argparse.Namespace(metadata_root=args.metadata_root, run_id=args.execution_id))
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -690,6 +787,16 @@ def parser() -> argparse.ArgumentParser:
     object_trace_cmd = commands.add_parser("object-trace"); object_trace_cmd.add_argument("object_id"); object_trace_cmd.add_argument("--json", action="store_true"); object_trace_cmd.set_defaults(handler=command_object_trace)
     file_trace_cmd = commands.add_parser("file-trace"); file_trace_cmd.add_argument("file_id"); file_trace_cmd.add_argument("--json", action="store_true"); file_trace_cmd.set_defaults(handler=command_file_trace)
     backfill = commands.add_parser("relationship-backfill"); backfill.add_argument("collection"); backfill.add_argument("--plan-only", action="store_true", default=True); backfill.set_defaults(handler=command_relationship_backfill)
+    operations_preview_cmd = commands.add_parser("operations-preview"); operations_preview_cmd.set_defaults(handler=command_operations_preview)
+    operations_status_cmd = commands.add_parser("operations-status"); operations_status_cmd.add_argument("--json", action="store_true"); operations_status_cmd.set_defaults(handler=command_operations_status)
+    operations_history_cmd = commands.add_parser("operations-history"); operations_history_cmd.add_argument("--json", action="store_true"); operations_history_cmd.set_defaults(handler=command_operations_history)
+    operations_report_cmd = commands.add_parser("operations-report"); operations_report_cmd.add_argument("run_id"); operations_report_cmd.set_defaults(handler=command_operations_report)
+    scheduled_source = commands.add_parser("scheduled-source-check"); scheduled_source.add_argument("source_id"); scheduled_source.add_argument("--page-size", type=int, default=50); scheduled_source.add_argument("--json", action="store_true"); scheduled_source.set_defaults(handler=command_scheduled_source_check)
+    scheduled_verify = commands.add_parser("scheduled-verify"); scheduled_verify.add_argument("collection"); scheduled_verify.add_argument("--policy", choices=("metadata-only", "sha256", "full-hashes"), default="sha256"); scheduled_verify.set_defaults(handler=command_scheduled_verify)
+    scheduled_reconcile = commands.add_parser("scheduled-reconcile"); scheduled_reconcile.add_argument("collection"); scheduled_reconcile.set_defaults(handler=command_scheduled_reconcile)
+    retention_plan_cmd = commands.add_parser("retention-plan"); retention_plan_cmd.set_defaults(handler=command_retention_plan)
+    retention_execute_cmd = commands.add_parser("retention-execute"); retention_execute_cmd.add_argument("plan_id"); retention_execute_cmd.add_argument("--yes", action="store_true"); retention_execute_cmd.set_defaults(handler=command_retention_execute)
+    retention_report_cmd = commands.add_parser("retention-report"); retention_report_cmd.add_argument("execution_id"); retention_report_cmd.set_defaults(handler=command_retention_report)
 
     media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
     media_scan.add_argument("location")

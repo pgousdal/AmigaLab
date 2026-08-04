@@ -85,6 +85,14 @@ amigalab_metadata_directories:
   - repair-plans
   - repair-plan-events
   - relationship-backfills
+  - operations-runs
+  - operations-events
+  - operations-reports
+  - notifications
+  - retention-policies
+  - retention-plans
+  - retention-executions
+  - retention-reports
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
@@ -127,6 +135,31 @@ amigalab_verification_recent_trust_window: 86400
 amigalab_verification_trace_depth_limit: 32
 amigalab_repair_plan_enabled: true
 amigalab_relationship_backfill_enabled: true
+amigalab_operations_enabled: false
+amigalab_operations:
+  source_checks:
+    enabled: false
+    schedule: daily
+    mirror_plan_policy: none
+  verification:
+    enabled: false
+    schedule: weekly
+    collection: aminet
+    policy: sha256
+  reconciliation:
+    enabled: false
+    schedule: weekly
+  retention:
+    enabled: false
+  notifications:
+    enabled: false
+amigalab_retention:
+  provider_cache_days: 0
+  completed_checkpoints_days: 0
+  partial_snapshot_days: 0
+  operations_reports_days: 0
+  temporary_staging_days: 0
+  verification_reports_keep: 0
 amigalab_deployment_mode: standalone
 amigalab_shared:
   enabled: false

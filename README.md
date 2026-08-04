@@ -388,6 +388,13 @@ Use `aminet-verify`, `object-trace`, `file-trace`, and
 `collection-reconcile` for offline, read-only integrity and provenance
 checks. Reports and repair plans are canonical metadata; they never modify
 preserved collection or media content.
+
+## Scheduled operations (M2.21)
+
+Scheduled source checks, verification, reconciliation, and retention are
+opt-in. They produce canonical reports and draft plans only; no timer approves
+or executes mirror, import, or repair plans automatically. Use
+`operations-preview` before enabling the namespaced systemd units.
 # External metadata inspection
 
 AmigaLab M2.15 can register and inspect Internet Archive metadata sources and

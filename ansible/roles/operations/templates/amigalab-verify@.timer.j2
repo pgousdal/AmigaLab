@@ -1,0 +1,11 @@
+[Unit]
+Description=AmigaLab scheduled verification (%i)
+
+[Timer]
+OnCalendar={{ amigalab_operations.verification.schedule | default('weekly') }}
+Persistent=true
+RandomizedDelaySec=15m
+AccuracySec=1h
+
+[Install]
+WantedBy=timers.target

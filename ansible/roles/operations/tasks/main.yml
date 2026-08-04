@@ -1,0 +1,33 @@
+---
+- name: Validate AmigaLab operations configuration
+  ansible.builtin.assert:
+    that:
+      - amigalab_operations_enabled | bool == false or amigalab_operations is mapping
+    fail_msg: Operations configuration must be a mapping and is opt-in.
+
+- name: Create AmigaLab operations directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  loop:
+    - "{{ amigalab_storage_root }}/run/locks"
+    - "{{ amigalab_metadata_root }}/operations-runs"
+    - "{{ amigalab_metadata_root }}/operations-events"
+    - "{{ amigalab_metadata_root }}/operations-reports"
+    - "{{ amigalab_metadata_root }}/notifications"
+    - "{{ amigalab_metadata_root }}/retention-policies"
+    - "{{ amigalab_metadata_root }}/retention-plans"
+    - "{{ amigalab_metadata_root }}/retention-executions"
+    - "{{ amigalab_metadata_root }}/retention-reports"
+
+- name: Install disabled-by-default AmigaLab operation units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop:
+    - amigalab-verify@.service
+    - amigalab-verify@.timer
+  when: amigalab_operations_enabled | bool
+  notify: Reload AmigaLab systemd

@@ -1,0 +1,14 @@
+[Unit]
+Description=AmigaLab collection verification (%i)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User={{ amigalab_owner | default('root') }}
+ExecStart=/usr/bin/python3 /srv/amigalab/scripts/amigalab-import.py scheduled-verify %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/amigalab/metadata /srv/amigalab/run
+
