@@ -129,8 +129,20 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
     stage = staging_root / source.id / "approved"
     destination_root = archive_root / collection
     copied = reused = 0
-    for relative_path in selected:
-        candidate, event = create_object(collection, location, relative_path, source)
+    adapter = None if location.is_dir() else __import__("preservation.sources", fromlist=["adapter_for"]).adapter_for(location, source.kind)
+    try:
+      for relative_path in selected:
+        source_root = location
+        if adapter is not None:
+            entry = next((item for item in adapter.entries() if item.path == relative_path), None)
+            if entry is None or entry.unsupported_reason:
+                raise ValueError(f"unsupported or missing archive member: {relative_path}")
+            staged_source = stage / relative_path
+            staged_source.parent.mkdir(parents=True, exist_ok=True)
+            with adapter.open(entry) as source_stream, staged_source.open("wb") as target_stream:
+                shutil.copyfileobj(source_stream, target_stream)
+            source_root = stage
+        candidate, event = create_object(collection, source_root, relative_path, source)
         target = destination_root / relative_path
         if target.exists():
             existing = preserved_file(collection, destination_root, relative_path)
@@ -142,7 +154,10 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
         for file in candidate.files:
             staged = stage / file.original_relative_path
             staged.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(location / file.original_relative_path, staged)
+            if source_root == stage and staged != stage / file.original_relative_path:
+                raise ValueError("invalid staged source path")
+            if source_root != stage:
+                shutil.copy2(location / file.original_relative_path, staged)
             destination = destination_root / file.original_relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
             temporary = destination.with_name(f".{destination.name}.amigalab-partial")
@@ -154,4 +169,7 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
         store.save_import(event)
         store.save_object(candidate)
         copied += 1
+    finally:
+      if adapter is not None:
+        adapter.close()
     return copied, reused

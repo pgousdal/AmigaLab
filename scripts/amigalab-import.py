@@ -223,6 +223,16 @@ def command_plan_execute(args: argparse.Namespace) -> int:
         raise ValueError("plan source is not registered")
     if source_fingerprint(Path(source.locator)) != plan.source_fingerprint:
         raise ValueError("source fingerprint changed since plan creation")
+    if plan.import_mode == "media-only":
+        if Path(source.locator).is_dir():
+            raise ValueError("media-only requires a single media or archive source")
+        media = register_media(Path(source.locator), source.id, Path(source.locator).name, source.license_profile, source.media_classification)
+        media_path = Path(args.media_root) / (source.media_classification or "unknown") / media.id / media.original_filename
+        media_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source.locator, media_path)
+        MetadataStore(metadata_root).save_media(media)
+        print(f"media preserved: {media_path}")
+        return 0
     store.event(plan, "execution-start", "approved plan execution")
     transaction = new_transaction(source.id, plan.source_fingerprint, plan.destination_collection, plan.import_mode, plan.selected_entries)
     transaction_store = TransactionStore(metadata_root)
@@ -343,6 +353,7 @@ def parser() -> argparse.ArgumentParser:
     plan_execute = commands.add_parser("plan-execute")
     plan_execute.add_argument("plan_id")
     plan_execute.add_argument("--yes", action="store_true")
+    plan_execute.add_argument("--media-root", default=f"{default_root}/media")
     plan_execute.set_defaults(handler=command_plan_execute)
     conflict_list = commands.add_parser("conflict-list")
     conflict_list.add_argument("plan_id")
