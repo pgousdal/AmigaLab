@@ -135,6 +135,16 @@ amigalab_verification_recent_trust_window: 86400
 amigalab_verification_trace_depth_limit: 32
 amigalab_repair_plan_enabled: true
 amigalab_relationship_backfill_enabled: true
+amigalab_catalog_enabled: true
+amigalab_catalog_root: "{{ amigalab_metadata_root }}/catalog"
+amigalab_catalog_database: "{{ amigalab_catalog_root }}/catalog.db"
+amigalab_catalog_default_limit: 20
+amigalab_catalog_max_text_bytes: 1048576
+amigalab_catalog_strict_build: false
+amigalab_catalog_timer_enabled: false
+amigalab_meilisearch_enabled: false
+amigalab_meilisearch_url: http://127.0.0.1:7700
+amigalab_meilisearch_index: amigalab_catalog
 amigalab_operations_enabled: false
 amigalab_operations:
   source_checks:

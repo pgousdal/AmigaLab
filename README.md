@@ -395,6 +395,10 @@ Scheduled source checks, verification, reconciliation, and retention are
 opt-in. They produce canonical reports and draft plans only; no timer approves
 or executes mirror, import, or repair plans automatically. Use
 `operations-preview` before enabling the namespaced systemd units.
+
+The local catalog (`catalog-build`, `search`, `catalog-verify`) is a
+rebuildable SQLite/FTS5 index. Canonical metadata and preserved files remain
+authoritative; Meilisearch is optional.
 # External metadata inspection
 
 AmigaLab M2.15 can register and inspect Internet Archive metadata sources and

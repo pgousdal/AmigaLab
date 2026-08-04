@@ -1,0 +1,16 @@
+---
+- name: Create AmigaLab catalog directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  loop:
+    - "{{ amigalab_catalog_root }}"
+    - "{{ amigalab_catalog_root }}/tmp"
+
+- name: Validate catalog configuration
+  ansible.builtin.assert:
+    that:
+      - amigalab_catalog_database is match('^/srv/amigalab/')
+      - amigalab_meilisearch_index is match('^amigalab[_-]')
+    fail_msg: Catalog paths and indexes must remain AmigaLab-namespaced.

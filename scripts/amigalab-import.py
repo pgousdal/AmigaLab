@@ -40,6 +40,7 @@ from preservation.verification_reports import verify_collection, VerificationRep
 from preservation.traces import object_trace, file_trace, media_trace as enriched_media_trace
 from preservation.relationship_backfill import create_plan as create_relationship_backfill_plan
 from preservation.operations import OperationsRun, OperationsStore, OperationsLock, operations_preview, retention_plan, validate_operations_config, now
+from preservation.catalog import build_catalog, CatalogIndex, verify_catalog
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -742,6 +743,47 @@ def command_retention_report(args: argparse.Namespace) -> int:
     return command_operations_report(argparse.Namespace(metadata_root=args.metadata_root, run_id=args.execution_id))
 
 
+def _catalog_db(args):
+    return Path(getattr(args, "catalog_database", "") or (Path(args.metadata_root) / "catalog" / "catalog.db"))
+
+
+def command_catalog_build(args):
+    result = build_catalog(Path(args.metadata_root), Path(args.archive_root), _catalog_db(args), args.max_text_bytes)
+    build_id = sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
+    ExternalStorage(Path(args.metadata_root)).put("catalog-builds", build_id, {"id": build_id, **result, "database": str(_catalog_db(args)), "completed_at": now(), "schema_version": 1})
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0
+
+
+def command_catalog_update(args):
+    return command_catalog_build(args)
+
+
+def command_catalog_verify(args):
+    result = verify_catalog(_catalog_db(args)); print(json.dumps(result, indent=2, sort_keys=True)); return 0 if result.get("valid") else 1
+
+
+def command_catalog_search(args):
+    rows = CatalogIndex(_catalog_db(args)).search(args.query, collection=args.collection, entity_type=args.type, extension=args.extension, path_prefix=args.path_prefix, license_profile=args.license, verification=args.verification, source=args.source, limit=args.limit, offset=args.offset)
+    values = []
+    for raw, rank in rows:
+        item = json.loads(raw); item["rank"] = rank; values.append(item)
+    print(json.dumps(values, indent=2, sort_keys=True) if args.json else "\n".join(f"{v['id']}\t{v.get('title','')}\t{v.get('relative_path','')}" for v in values)); return 0
+
+
+def command_catalog_show(args):
+    value = CatalogIndex(_catalog_db(args)).show(args.document_id)
+    if value is None: raise ValueError(f"unknown catalog document: {args.document_id}")
+    print(json.dumps(value, indent=2, sort_keys=True)); return 0
+
+
+def command_catalog_stats(args):
+    print(json.dumps(CatalogIndex(_catalog_db(args)).stats(), indent=2, sort_keys=True)); return 0
+
+
+def command_catalog_history(args):
+    print(json.dumps(list(ExternalStorage(Path(args.metadata_root)).list("catalog-builds")), indent=2, sort_keys=True)); return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -797,6 +839,13 @@ def parser() -> argparse.ArgumentParser:
     retention_plan_cmd = commands.add_parser("retention-plan"); retention_plan_cmd.set_defaults(handler=command_retention_plan)
     retention_execute_cmd = commands.add_parser("retention-execute"); retention_execute_cmd.add_argument("plan_id"); retention_execute_cmd.add_argument("--yes", action="store_true"); retention_execute_cmd.set_defaults(handler=command_retention_execute)
     retention_report_cmd = commands.add_parser("retention-report"); retention_report_cmd.add_argument("execution_id"); retention_report_cmd.set_defaults(handler=command_retention_report)
+    catalog_build_cmd = commands.add_parser("catalog-build"); catalog_build_cmd.add_argument("--catalog-database"); catalog_build_cmd.add_argument("--max-text-bytes", type=int, default=1048576); catalog_build_cmd.set_defaults(handler=command_catalog_build)
+    catalog_update_cmd = commands.add_parser("catalog-update"); catalog_update_cmd.add_argument("--catalog-database"); catalog_update_cmd.add_argument("--max-text-bytes", type=int, default=1048576); catalog_update_cmd.set_defaults(handler=command_catalog_update)
+    catalog_verify_cmd = commands.add_parser("catalog-verify"); catalog_verify_cmd.add_argument("--catalog-database"); catalog_verify_cmd.set_defaults(handler=command_catalog_verify)
+    catalog_search_cmd = commands.add_parser("search"); catalog_search_cmd.add_argument("query"); catalog_search_cmd.add_argument("--catalog-database"); catalog_search_cmd.add_argument("--collection"); catalog_search_cmd.add_argument("--type"); catalog_search_cmd.add_argument("--extension"); catalog_search_cmd.add_argument("--path-prefix"); catalog_search_cmd.add_argument("--license"); catalog_search_cmd.add_argument("--verification"); catalog_search_cmd.add_argument("--source"); catalog_search_cmd.add_argument("--limit", type=int, default=20); catalog_search_cmd.add_argument("--offset", type=int, default=0); catalog_search_cmd.add_argument("--json", action="store_true"); catalog_search_cmd.set_defaults(handler=command_catalog_search)
+    catalog_show_cmd = commands.add_parser("catalog-show"); catalog_show_cmd.add_argument("document_id"); catalog_show_cmd.add_argument("--catalog-database"); catalog_show_cmd.set_defaults(handler=command_catalog_show)
+    catalog_stats_cmd = commands.add_parser("catalog-stats"); catalog_stats_cmd.add_argument("--catalog-database"); catalog_stats_cmd.set_defaults(handler=command_catalog_stats)
+    catalog_history_cmd = commands.add_parser("catalog-build-history"); catalog_history_cmd.set_defaults(handler=command_catalog_history)
 
     media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
     media_scan.add_argument("location")
