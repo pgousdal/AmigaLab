@@ -31,6 +31,7 @@ from preservation.external.changes import diff_snapshots
 from preservation.external.mirror_plans import MirrorPlanStore, create_mirror_plan
 from preservation.external.mirror_plans import validate_mirror_plan, review_mirror_plan
 from preservation.external.checks import InspectionStore, inspect_resumable
+from preservation.external.mirror_execution import MirrorExecutionStore, execute_mirror, resume_mirror
 from preservation.external.storage import ExternalStorage
 
 
@@ -483,6 +484,42 @@ def command_mirror_plan_preview(args: argparse.Namespace) -> int:
     print(json.dumps(preview, indent=2, sort_keys=True)); return 0
 
 
+def command_mirror_execute(args: argparse.Namespace) -> int:
+    plan, _ = _load_mirror_plan_snapshot(args); source = external_source_store(args).get(plan.source_id)
+    if not args.yes: print(json.dumps({"plan_id": plan.id, "requires_confirmation": True}, indent=2)); return 1
+    execution = execute_mirror(plan, source, MirrorExecutionStore(Path(args.metadata_root)), Path(args.staging_root), Path(args.media_root), yes=True)
+    print(json.dumps(asdict(execution), indent=2, sort_keys=True) if args.json else execution.id); return 0 if execution.state == "completed" else 2
+
+
+def command_mirror_status(args: argparse.Namespace) -> int:
+    execution = MirrorExecutionStore(Path(args.metadata_root)).load_execution(args.execution_id)
+    print(json.dumps(asdict(execution), indent=2, sort_keys=True) if args.json else f"{execution.id}: {execution.state}"); return 0
+
+
+def command_mirror_resume(args: argparse.Namespace) -> int:
+    store = MirrorExecutionStore(Path(args.metadata_root)); execution = store.load_execution(args.execution_id)
+    plan, _ = _load_mirror_plan_snapshot(argparse.Namespace(metadata_root=args.metadata_root, plan_id=execution.plan_id))
+    source = external_source_store(args).get(execution.source_id)
+    if not args.yes: print(json.dumps({"execution_id": execution.id, "requires_confirmation": True}, indent=2)); return 1
+    result = resume_mirror(execution, plan, source, store, Path(args.staging_root), Path(args.media_root), yes=True)
+    print(json.dumps(asdict(result), indent=2, sort_keys=True) if args.json else result.id); return 0 if result.state == "completed" else 2
+
+
+def command_mirror_report(args: argparse.Namespace) -> int:
+    execution = MirrorExecutionStore(Path(args.metadata_root)).load_execution(args.execution_id)
+    entries = MirrorExecutionStore(Path(args.metadata_root)).list_entries(execution.id)
+    report = {"execution": asdict(execution), "entries": [asdict(entry) for entry in entries], "completed": len(execution.completed_entries), "reused": len(execution.reused_entries), "failed": len(execution.failed_entries)}
+    print(json.dumps(report, indent=2, sort_keys=True)); return 0
+
+
+def command_mirror_cancel(args: argparse.Namespace) -> int:
+    store = MirrorExecutionStore(Path(args.metadata_root)); execution = store.load_execution(args.execution_id)
+    if execution.state in {"completed", "cancelled"}: raise ValueError("execution is not cancellable")
+    from dataclasses import replace
+    updated = replace(execution, state="cancelled", resumable=False, final_result=args.reason, latest_error=args.reason, updated_at=__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())
+    store.save_execution(updated); print(updated.id); return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -631,6 +668,11 @@ def parser() -> argparse.ArgumentParser:
     mirror_approve = commands.add_parser("mirror-plan-approve"); mirror_approve.add_argument("plan_id"); mirror_approve.add_argument("--note", default=""); mirror_approve.set_defaults(handler=command_mirror_plan_approve)
     mirror_cancel = commands.add_parser("mirror-plan-cancel"); mirror_cancel.add_argument("plan_id"); mirror_cancel.add_argument("--reason", default="cancelled by operator"); mirror_cancel.set_defaults(handler=command_mirror_plan_cancel)
     mirror_preview = commands.add_parser("mirror-plan-preview"); mirror_preview.add_argument("plan_id"); mirror_preview.set_defaults(handler=command_mirror_plan_preview)
+    mirror_execute = commands.add_parser("mirror-execute"); mirror_execute.add_argument("plan_id"); mirror_execute.add_argument("--yes", action="store_true"); mirror_execute.add_argument("--json", action="store_true"); mirror_execute.add_argument("--media-root", default=f"{default_root}/media"); mirror_execute.set_defaults(handler=command_mirror_execute)
+    mirror_status = commands.add_parser("mirror-status"); mirror_status.add_argument("execution_id"); mirror_status.add_argument("--json", action="store_true"); mirror_status.set_defaults(handler=command_mirror_status)
+    mirror_resume = commands.add_parser("mirror-resume"); mirror_resume.add_argument("execution_id"); mirror_resume.add_argument("--yes", action="store_true"); mirror_resume.add_argument("--json", action="store_true"); mirror_resume.add_argument("--media-root", default=f"{default_root}/media"); mirror_resume.set_defaults(handler=command_mirror_resume)
+    mirror_report = commands.add_parser("mirror-report"); mirror_report.add_argument("execution_id"); mirror_report.set_defaults(handler=command_mirror_report)
+    mirror_cancel = commands.add_parser("mirror-cancel"); mirror_cancel.add_argument("execution_id"); mirror_cancel.add_argument("--reason", default="cancelled by operator"); mirror_cancel.set_defaults(handler=command_mirror_cancel)
     return command_parser
 
 

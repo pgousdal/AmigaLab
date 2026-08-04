@@ -62,6 +62,13 @@ amigalab_metadata_directories:
   - mirror-plan-approvals
   - mirror-plan-cancellations
   - mirror-plan-supersession
+  - mirror-executions
+  - mirror-acquisition-entries
+  - mirror-acquisition-events
+  - mirror-retry-events
+  - mirror-verification-events
+  - mirror-reports
+  - mirror-provenance
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
@@ -78,6 +85,16 @@ amigalab_external_request_timeout: 20
 amigalab_external_request_delay: 1
 amigalab_external_max_retries: 3
 amigalab_external_user_agent: "AmigaLab/2.15 (metadata inspection)"
+amigalab_mirror_connect_timeout: 30
+amigalab_mirror_read_timeout: 60
+amigalab_mirror_max_retries: 3
+amigalab_mirror_backoff_base: 1
+amigalab_mirror_max_single_file_bytes: 10737418240
+amigalab_mirror_max_plan_bytes: 53687091200
+amigalab_mirror_unknown_length_max_bytes: 1073741824
+amigalab_mirror_free_space_margin_bytes: 1073741824
+amigalab_mirror_user_agent: "AmigaLab/2.17"
+amigalab_mirror_concurrency: 1
 amigalab_deployment_mode: standalone
 amigalab_shared:
   enabled: false
