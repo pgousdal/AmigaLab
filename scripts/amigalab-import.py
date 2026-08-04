@@ -29,6 +29,8 @@ from preservation.external.internet_archive import InternetArchiveProvider
 from preservation.external.snapshots import SnapshotStore, create_snapshot
 from preservation.external.changes import diff_snapshots
 from preservation.external.mirror_plans import MirrorPlanStore, create_mirror_plan
+from preservation.external.mirror_plans import validate_mirror_plan, review_mirror_plan
+from preservation.external.checks import InspectionStore, inspect_resumable
 from preservation.external.storage import ExternalStorage
 
 
@@ -374,6 +376,22 @@ def command_external_source_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_external_source_resume(args: argparse.Namespace) -> int:
+    checks = InspectionStore(Path(args.metadata_root)); check = checks.load(args.check_id)
+    source = external_source_store(args).get(check.source_id)
+    result = inspect_resumable(source, InternetArchiveProvider(), checks, check.id, page_size=check.page_size)
+    print(json.dumps(asdict(result), indent=2, sort_keys=True) if args.json else f"{result.id}: {result.status}")
+    return 0 if result.status == "completed" else 2
+
+
+def command_external_source_cancel(args: argparse.Namespace) -> int:
+    checks = InspectionStore(Path(args.metadata_root)); check = checks.load(args.check_id)
+    if check.status in {"completed", "cancelled"}: raise ValueError("inspection is not cancellable")
+    result = checks.update(check, status="cancelled", resumable=False, final_result=args.reason, errors=tuple((*check.errors, args.reason)))
+    print(result.id)
+    return 0
+
+
 def command_external_snapshot_list(args: argparse.Namespace) -> int:
     snapshots = SnapshotStore(Path(args.metadata_root)).list(args.source_id)
     print(json.dumps(list(snapshots), indent=2, sort_keys=True))
@@ -421,6 +439,48 @@ def command_mirror_plan_create(args: argparse.Namespace) -> int:
 def command_mirror_plan_show(args: argparse.Namespace) -> int:
     print(json.dumps(MirrorPlanStore(Path(args.metadata_root)).get(args.plan_id), indent=2, sort_keys=True))
     return 0
+
+
+def _load_mirror_plan_snapshot(args):
+    raw = MirrorPlanStore(Path(args.metadata_root)).get(args.plan_id)
+    source = external_source_store(args).get(raw["source_id"])
+    snap = SnapshotStore(Path(args.metadata_root)).get(raw["snapshot_id"], source.id)
+    from preservation.external.models import ExternalItem, ExternalFile, ExternalSnapshot, MirrorPlan
+    items = tuple(ExternalItem(**{**item, "subjects": tuple(item.get("subjects", ())), "collections": tuple(item.get("collections", ())), "files": tuple(ExternalFile(**file) for file in item.get("files", ()))}) for item in snap["items"])
+    return MirrorPlan(**{**raw, "selected_files": tuple(raw.get("selected_files", ())), "excluded_files": tuple(raw.get("excluded_files", ())), "warnings": tuple(raw.get("warnings", ())), "blocking_issues": tuple(raw.get("blocking_issues", ())), "approval_history": tuple(raw.get("approval_history", ())), "cancellation_history": tuple(raw.get("cancellation_history", ())) }), ExternalSnapshot(**{**snap, "items": items, "warnings": tuple(snap.get("warnings", ()))})
+
+
+def command_mirror_plan_validate(args: argparse.Namespace) -> int:
+    plan, snapshot = _load_mirror_plan_snapshot(args); issues = validate_mirror_plan(plan, snapshot)
+    print(json.dumps({"plan_id": plan.id, "valid": not issues, "issues": issues}, indent=2, sort_keys=True)); return 0 if not issues else 1
+
+
+def command_mirror_plan_review(args: argparse.Namespace) -> int:
+    plan, _ = _load_mirror_plan_snapshot(args); result = review_mirror_plan(plan)
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0
+
+
+def command_mirror_plan_approve(args: argparse.Namespace) -> int:
+    plan, snapshot = _load_mirror_plan_snapshot(args); issues = validate_mirror_plan(plan, snapshot)
+    if issues: raise ValueError("mirror plan validation failed: " + "; ".join(issues))
+    from dataclasses import replace
+    updated = replace(plan, status="approved", approval_history=tuple((*plan.approval_history, args.note or "approved")))
+    MirrorPlanStore(Path(args.metadata_root)).save(updated); print(updated.id); return 0
+
+
+def command_mirror_plan_cancel(args: argparse.Namespace) -> int:
+    plan_raw = MirrorPlanStore(Path(args.metadata_root)).get(args.plan_id)
+    if plan_raw.get("status") in {"executing", "completed", "cancelled"}: raise ValueError("mirror plan is not cancellable")
+    plan, _ = _load_mirror_plan_snapshot(args)
+    from dataclasses import replace
+    updated = replace(plan, status="cancelled", cancellation_history=tuple((*plan.cancellation_history, args.reason)))
+    MirrorPlanStore(Path(args.metadata_root)).save(updated); print(updated.id); return 0
+
+
+def command_mirror_plan_preview(args: argparse.Namespace) -> int:
+    plan, _ = _load_mirror_plan_snapshot(args)
+    preview = [{"source_id": plan.source_id, "item": item.get("item"), "filename": item.get("filename"), "metadata_locator": item.get("locator"), "proposed_content_locator": item.get("locator"), "proposed_staging_path": f"/srv/amigalab/staging/external/{plan.id}/{item.get('filename')}", "proposed_media_path": f"/srv/amigalab/media/{plan.target_category}/{plan.id}/{item.get('filename')}", "size": item.get("size"), "md5": item.get("md5"), "sha1": item.get("sha1"), "future_import_mode": "media-only"} for item in plan.selected_files]
+    print(json.dumps(preview, indent=2, sort_keys=True)); return 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -558,12 +618,19 @@ def parser() -> argparse.ArgumentParser:
     external_list = commands.add_parser("external-source-list"); external_list.add_argument("--json", action="store_true"); external_list.set_defaults(handler=command_external_source_list)
     external_show = commands.add_parser("external-source-show"); external_show.add_argument("source_id"); external_show.set_defaults(handler=command_external_source_show)
     external_check = commands.add_parser("external-source-check"); external_check.add_argument("source_id"); external_check.add_argument("--page-size", type=int, default=50); external_check.add_argument("--json", action="store_true"); external_check.set_defaults(handler=command_external_source_check)
+    external_resume = commands.add_parser("external-source-resume"); external_resume.add_argument("check_id"); external_resume.add_argument("--json", action="store_true"); external_resume.set_defaults(handler=command_external_source_resume)
+    external_cancel = commands.add_parser("external-source-cancel"); external_cancel.add_argument("check_id"); external_cancel.add_argument("--reason", default="cancelled by operator"); external_cancel.set_defaults(handler=command_external_source_cancel)
     snapshot_list = commands.add_parser("external-snapshot-list"); snapshot_list.add_argument("source_id"); snapshot_list.set_defaults(handler=command_external_snapshot_list)
     snapshot_show = commands.add_parser("external-snapshot-show"); snapshot_show.add_argument("source_id"); snapshot_show.add_argument("snapshot_id"); snapshot_show.set_defaults(handler=command_external_snapshot_show)
     source_history = commands.add_parser("external-source-history"); source_history.add_argument("source_id"); source_history.set_defaults(handler=command_external_source_history)
     external_diff = commands.add_parser("external-diff"); external_diff.add_argument("old_snapshot_id"); external_diff.add_argument("new_snapshot_id"); external_diff.set_defaults(handler=command_external_diff)
     mirror_create = commands.add_parser("mirror-plan-create"); mirror_create.add_argument("source_id"); mirror_create.add_argument("snapshot_id"); mirror_create.add_argument("--policy", default="original-media"); mirror_create.set_defaults(handler=command_mirror_plan_create)
     mirror_show = commands.add_parser("mirror-plan-show"); mirror_show.add_argument("plan_id"); mirror_show.set_defaults(handler=command_mirror_plan_show)
+    mirror_validate = commands.add_parser("mirror-plan-validate"); mirror_validate.add_argument("plan_id"); mirror_validate.set_defaults(handler=command_mirror_plan_validate)
+    mirror_review = commands.add_parser("mirror-plan-review"); mirror_review.add_argument("plan_id"); mirror_review.set_defaults(handler=command_mirror_plan_review)
+    mirror_approve = commands.add_parser("mirror-plan-approve"); mirror_approve.add_argument("plan_id"); mirror_approve.add_argument("--note", default=""); mirror_approve.set_defaults(handler=command_mirror_plan_approve)
+    mirror_cancel = commands.add_parser("mirror-plan-cancel"); mirror_cancel.add_argument("plan_id"); mirror_cancel.add_argument("--reason", default="cancelled by operator"); mirror_cancel.set_defaults(handler=command_mirror_plan_cancel)
+    mirror_preview = commands.add_parser("mirror-plan-preview"); mirror_preview.add_argument("plan_id"); mirror_preview.set_defaults(handler=command_mirror_plan_preview)
     return command_parser
 
 

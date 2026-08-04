@@ -57,6 +57,11 @@ amigalab_metadata_directories:
   - external-changes
   - mirror-plans
   - mirror-plan-events
+  - external-checkpoints
+  - external-check-events
+  - mirror-plan-approvals
+  - mirror-plan-cancellations
+  - mirror-plan-supersession
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever

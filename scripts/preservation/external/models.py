@@ -91,3 +91,9 @@ class MirrorPlan:
     blocking_issues: tuple[str, ...] = ()
     fingerprint: str = ""
     schema_version: int = 1
+    source_configuration_fingerprint: str = ""
+    snapshot_fingerprint: str = ""
+    revision: int = 1
+    approval_history: tuple[str, ...] = ()
+    cancellation_history: tuple[str, ...] = ()
+    superseded_by: str = ""

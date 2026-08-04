@@ -25,7 +25,25 @@ def create_mirror_plan(source_id: str, snapshot: ExternalSnapshot, policy: str =
                 selected.append(record)
     content = {"source_id": source_id, "snapshot_id": snapshot.id, "previous_snapshot_id": previous_snapshot_id, "policy": policy, "selected_files": selected, "excluded_files": excluded, "target_category": "unknown", "warnings": warnings}
     fingerprint = stable_id(content)
-    return MirrorPlan(stable_id({"fingerprint": fingerprint}), source_id, snapshot.id, previous_snapshot_id, datetime.now(timezone.utc).isoformat(), policy, "blocked" if warnings else "draft", tuple(selected), tuple(excluded), "unknown", tuple(warnings), (), fingerprint)
+    return MirrorPlan(stable_id({"fingerprint": fingerprint}), source_id, snapshot.id, previous_snapshot_id, datetime.now(timezone.utc).isoformat(), policy, "blocked" if warnings else "draft", tuple(selected), tuple(excluded), "unknown", tuple(warnings), (), fingerprint, snapshot_fingerprint=snapshot.fingerprint)
+
+
+def validate_mirror_plan(plan: MirrorPlan, snapshot: ExternalSnapshot) -> tuple[str, ...]:
+    issues: list[str] = []
+    if not snapshot.completed: issues.append("snapshot is not completed")
+    if plan.snapshot_id != snapshot.id or (plan.snapshot_fingerprint and plan.snapshot_fingerprint != snapshot.fingerprint): issues.append("snapshot fingerprint mismatch")
+    known = {(item.identifier, file.name) for item in snapshot.items for file in item.files}
+    selected = [(str(item.get("item")), str(item.get("filename"))) for item in plan.selected_files]
+    if len(selected) != len(set(selected)): issues.append("duplicate selected file identity")
+    for identity in selected:
+        if identity not in known: issues.append(f"selected file missing from snapshot: {identity[0]}/{identity[1]}")
+        if not safe_name(identity[1]): issues.append(f"unsafe filename: {identity[1]}")
+    if plan.status in {"cancelled", "superseded", "approved"}: issues.append(f"plan status is {plan.status}")
+    return tuple(sorted(set(issues)))
+
+
+def review_mirror_plan(plan: MirrorPlan) -> dict[str, object]:
+    return {"plan_id": plan.id, "selected_file_count": len(plan.selected_files), "expected_bytes": sum(int(item.get("size") or 0) for item in plan.selected_files), "excluded_file_count": len(plan.excluded_files), "warnings": list(plan.warnings), "blocking_issues": list(plan.blocking_issues), "upstream_hash_coverage": sum(bool(item.get("md5") or item.get("sha1")) for item in plan.selected_files), "unknown_license": True, "future_import_mode": "media-only"}
 
 
 class MirrorPlanStore:
