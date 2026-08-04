@@ -79,6 +79,15 @@ class TransactionStore:
         path.write_text(json.dumps(asdict(event), indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return path
 
+    def list_entries(self, transaction_id: str) -> tuple[TransactionEntry, ...]:
+        directory = self.root / "entries"
+        result = []
+        for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("transaction_id") == transaction_id:
+                result.append(TransactionEntry(**data))
+        return tuple(result)
+
     def transition(self, entry: TransactionEntry, new_state: str, phase: str, operation: str, result: str = "") -> TransactionEntry:
         if new_state not in VALID_TRANSITIONS.get(entry.state, set()):
             raise ValueError(f"invalid transaction entry transition: {entry.state} -> {new_state}")

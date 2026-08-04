@@ -74,7 +74,8 @@ def command_import(args: argparse.Namespace) -> int:
 
 def command_transaction_status(args: argparse.Namespace) -> int:
     transaction = TransactionStore(Path(args.metadata_root)).load(args.transaction_id)
-    print(transaction)
+    entries = TransactionStore(Path(args.metadata_root)).list_entries(transaction.id)
+    print(f"transaction: {transaction.id}\nphase: {transaction.phase}\nentries: {len(entries)}\ncompleted: {sum(e.state in {'completed','reused'} for e in entries)}\nfailed: {sum(e.state == 'failed' for e in entries)}")
     return 0
 
 
@@ -82,13 +83,19 @@ def command_transaction_resume(args: argparse.Namespace) -> int:
     metadata_root = Path(args.metadata_root)
     store = MetadataStore(metadata_root)
     transaction = TransactionStore(metadata_root).load(args.transaction_id)
+    if not args.yes:
+        print(f"resume requires confirmation: {transaction.id}", file=sys.stderr)
+        return 1
     source = store.get_source(transaction.source_id)
     if source is None:
         raise ValueError(f"source metadata is missing: {transaction.source_id}")
     location = Path(source.locator)
     if source_fingerprint(location) != transaction.source_fingerprint:
         raise ValueError("source changed since transaction scan; resume refused")
-    print_preview(import_source(location, transaction.destination_collection, source, store, Path(args.archive_root), Path(args.staging_root), True))
+    entries = TransactionStore(metadata_root).list_entries(transaction.id)
+    selected = tuple(entry.source_path for entry in entries if entry.state not in {"completed", "reused", "skipped"}) or transaction.pending_entries
+    copied, reused = import_selected(location, transaction.destination_collection, source, selected, store, Path(args.archive_root), Path(args.staging_root), transaction.id)
+    print(f"resumed: {transaction.id}\ncopied: {copied}\nreused: {reused}")
     TransactionStore(metadata_root).update(transaction, phase="completed", result="success")
     return 0
 
@@ -320,6 +327,7 @@ def parser() -> argparse.ArgumentParser:
     status.set_defaults(handler=command_transaction_status)
     resume = commands.add_parser("transaction-resume", help="resume an unchanged source transaction")
     resume.add_argument("transaction_id")
+    resume.add_argument("--yes", action="store_true")
     resume.set_defaults(handler=command_transaction_resume)
     conflicts = commands.add_parser("conflict-report", help="write structured path conflict JSON")
     conflicts.add_argument("location")

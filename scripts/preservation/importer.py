@@ -126,12 +126,12 @@ def import_source(
     return preview
 
 
-def import_selected(location: Path, collection: str, source: Source, selected: tuple[str, ...], store: MetadataStore, archive_root: Path, staging_root: Path) -> tuple[int, int]:
+def import_selected(location: Path, collection: str, source: Source, selected: tuple[str, ...], store: MetadataStore, archive_root: Path, staging_root: Path, transaction_id: str | None = None) -> tuple[int, int]:
     """Copy exactly the approved entry set; no selection rules are reevaluated."""
     stage = staging_root / source.id / "approved"
     destination_root = archive_root / collection
     copied = reused = 0
-    transaction_id = f"selected-{source.id}"
+    transaction_id = transaction_id or f"selected-{source.id}"
     transaction_store = TransactionStore(store.root)
     adapter = None if location.is_dir() else __import__("preservation.sources", fromlist=["adapter_for"]).adapter_for(location, source.kind)
     try:
