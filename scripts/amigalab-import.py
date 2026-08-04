@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,7 @@ from preservation.transactions import TransactionStore, new_transaction, source_
 from preservation.policy import validate_license_profile
 from preservation.plans import PlanStore, create_plan
 from preservation.recovery import RecoveryExecutor
+from preservation.recovery_workflow import RecoveryPlanStore, AuditReportStore, generate_plan, dry_run
 from preservation.verification import append_verification, verify_object
 
 
@@ -282,6 +284,37 @@ def command_conflict_decide(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_recovery_plan(args: argparse.Namespace) -> int:
+    metadata_root = Path(args.metadata_root)
+    transaction_store = TransactionStore(metadata_root)
+    transaction = transaction_store.load(args.transaction_id)
+    entries = transaction_store.list_entries(transaction.id)
+    plan = generate_plan(entries, transaction.source_fingerprint, transaction.id,
+                         Path(args.source_path or ""), Path(args.staging_root),
+                         Path(args.archive_root) / transaction.destination_collection)
+    if args.write:
+        RecoveryPlanStore(metadata_root).save(plan)
+    print(plan.to_json())
+    return 0
+
+
+def command_recovery_dry_run(args: argparse.Namespace) -> int:
+    metadata_root = Path(args.metadata_root)
+    plan = RecoveryPlanStore(metadata_root).load(args.plan_id)
+    entries = TransactionStore(metadata_root).list_entries(plan.identity)
+    report = dry_run(plan, entries, Path(args.staging_root), Path(plan.destination_path))
+    if getattr(args, "write_report", False):
+        AuditReportStore(metadata_root).save(report)
+    print(json.dumps(asdict(report), indent=2, sort_keys=True))
+    return 0 if report.result == "ready" else 1
+
+
+def command_recovery_report(args: argparse.Namespace) -> int:
+    path = Path(args.metadata_root) / "recovery-reports" / f"{args.report_id}.json"
+    print(path.read_text(encoding="utf-8"))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -390,6 +423,18 @@ def parser() -> argparse.ArgumentParser:
     conflict_decide.add_argument("--action", required=True)
     conflict_decide.add_argument("--reason", default="operator decision")
     conflict_decide.set_defaults(handler=command_conflict_decide)
+    recovery_plan = commands.add_parser("recovery-plan", help="generate deterministic recovery plan")
+    recovery_plan.add_argument("transaction_id")
+    recovery_plan.add_argument("--source-path")
+    recovery_plan.add_argument("--write", action="store_true")
+    recovery_plan.set_defaults(handler=command_recovery_plan)
+    recovery_dry = commands.add_parser("recovery-dry-run", help="validate a recovery plan without mutation")
+    recovery_dry.add_argument("plan_id")
+    recovery_dry.add_argument("--write-report", action="store_true")
+    recovery_dry.set_defaults(handler=command_recovery_dry_run)
+    recovery_report = commands.add_parser("recovery-report", help="show a persisted recovery report")
+    recovery_report.add_argument("report_id")
+    recovery_report.set_defaults(handler=command_recovery_report)
     return command_parser
 
 

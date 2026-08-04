@@ -47,6 +47,10 @@ amigalab_metadata_directories:
   - media-relationships
   - sidecar-relationships
   - execution-sets
+  - recovery-plans
+  - recovery-executions
+  - recovery-reports
+  - recovery-locks
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
