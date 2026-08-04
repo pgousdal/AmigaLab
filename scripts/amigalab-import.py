@@ -31,7 +31,9 @@ from preservation.external.changes import diff_snapshots
 from preservation.external.mirror_plans import MirrorPlanStore, create_mirror_plan
 from preservation.external.mirror_plans import validate_mirror_plan, review_mirror_plan
 from preservation.external.checks import InspectionStore, inspect_resumable
-from preservation.external.mirror_execution import MirrorExecutionStore, execute_mirror, resume_mirror
+from preservation.external.mirror_execution import MirrorExecutionStore, execute_mirror, resume_mirror, local_hashes
+from preservation.media_analysis import MediaAnalysisStore, analyze_media
+from preservation.media_import_plans import generate_import_plan, save_link
 from preservation.external.storage import ExternalStorage
 
 
@@ -520,6 +522,60 @@ def command_mirror_cancel(args: argparse.Namespace) -> int:
     store.save_execution(updated); print(updated.id); return 0
 
 
+def _find_acquisition(args, media_id):
+    store = MirrorExecutionStore(Path(args.metadata_root))
+    for raw in store.storage.list("mirror-acquisition-entries"):
+        if raw.get("id") == media_id or raw.get("final_path", "").endswith(media_id):
+            return store.load_entry(raw["id"]), store.load_execution(raw["execution_id"])
+    raise ValueError(f"acquired media not found: {media_id}")
+
+
+def command_media_analysis_create(args: argparse.Namespace) -> int:
+    entry, execution = _find_acquisition(args, args.media_id)
+    source = external_source_store(args).get(execution.source_id)
+    analysis = analyze_media(args.media_id, entry, execution, source, execution.plan_id, execution.snapshot_id, media_root=Path(args.media_root))
+    MediaAnalysisStore(Path(args.metadata_root)).save(analysis)
+    print(json.dumps(asdict(analysis), indent=2, sort_keys=True) if args.json else analysis.id); return 0
+
+
+def command_media_analysis_show(args: argparse.Namespace) -> int:
+    print(json.dumps(asdict(MediaAnalysisStore(Path(args.metadata_root)).get(args.analysis_id)), indent=2, sort_keys=True)); return 0
+
+
+def command_media_analysis_list(args: argparse.Namespace) -> int:
+    values = [asdict(item) for item in MediaAnalysisStore(Path(args.metadata_root)).list()]
+    print(json.dumps(values, indent=2, sort_keys=True)); return 0
+
+
+def command_media_analysis_validate(args: argparse.Namespace) -> int:
+    analysis = MediaAnalysisStore(Path(args.metadata_root)).get(args.analysis_id)
+    path = Path(analysis.local_media_path)
+    issues = []
+    if not path.is_file(): issues.append("media is missing")
+    elif local_hashes(path)[0] != analysis.local_media_hashes: issues.append("media hash changed")
+    if analysis.blocking_findings: issues.extend(analysis.blocking_findings)
+    print(json.dumps({"analysis_id": analysis.id, "valid": not issues, "issues": issues}, indent=2, sort_keys=True)); return 0 if not issues else 1
+
+
+def command_media_analysis_report(args: argparse.Namespace) -> int:
+    analysis = MediaAnalysisStore(Path(args.metadata_root)).get(args.analysis_id)
+    report = {"analysis_id": analysis.id, "media_id": analysis.media_id, "container_type": analysis.container_type, "member_count": len(analysis.members), "total_member_bytes": sum(member.size for member in analysis.members), "candidate_collections": analysis.candidate_collections, "recommended_import_mode": analysis.recommended_import_mode, "sidecar_count": len(analysis.sidecar_groups), "unsafe_entries": analysis.unsafe_entries, "rom_candidates": analysis.rom_candidates, "workbench_candidates": analysis.workbench_candidates, "warnings": analysis.warnings, "blocking_findings": analysis.blocking_findings}
+    print(json.dumps(report, indent=2, sort_keys=True)); return 0
+
+
+def command_import_plan_from_media(args: argparse.Namespace) -> int:
+    analysis = MediaAnalysisStore(Path(args.metadata_root)).get(args.analysis_id)
+    plan = generate_import_plan(analysis, policy=args.policy, collection=args.collection)
+    PlanStore(Path(args.metadata_root)).save(plan); save_link(Path(args.metadata_root), plan, analysis)
+    print(plan.id); return 0
+
+
+def command_media_trace(args: argparse.Namespace) -> int:
+    entry, execution = _find_acquisition(args, args.media_id)
+    analysis = [item for item in MediaAnalysisStore(Path(args.metadata_root)).list() if item.media_id == args.media_id]
+    print(json.dumps({"media_id": args.media_id, "source_id": execution.source_id, "snapshot_id": execution.snapshot_id, "mirror_plan_id": execution.plan_id, "mirror_execution_id": execution.id, "acquisition_entry_id": entry.id, "analysis_ids": [item.id for item in analysis]}, indent=2, sort_keys=True)); return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -673,6 +729,13 @@ def parser() -> argparse.ArgumentParser:
     mirror_resume = commands.add_parser("mirror-resume"); mirror_resume.add_argument("execution_id"); mirror_resume.add_argument("--yes", action="store_true"); mirror_resume.add_argument("--json", action="store_true"); mirror_resume.add_argument("--media-root", default=f"{default_root}/media"); mirror_resume.set_defaults(handler=command_mirror_resume)
     mirror_report = commands.add_parser("mirror-report"); mirror_report.add_argument("execution_id"); mirror_report.set_defaults(handler=command_mirror_report)
     mirror_cancel = commands.add_parser("mirror-cancel"); mirror_cancel.add_argument("execution_id"); mirror_cancel.add_argument("--reason", default="cancelled by operator"); mirror_cancel.set_defaults(handler=command_mirror_cancel)
+    analysis_create = commands.add_parser("media-analysis-create"); analysis_create.add_argument("media_id"); analysis_create.add_argument("--media-root", default=f"{default_root}/media"); analysis_create.add_argument("--json", action="store_true"); analysis_create.set_defaults(handler=command_media_analysis_create)
+    analysis_show = commands.add_parser("media-analysis-show"); analysis_show.add_argument("analysis_id"); analysis_show.set_defaults(handler=command_media_analysis_show)
+    analysis_list = commands.add_parser("media-analysis-list"); analysis_list.set_defaults(handler=command_media_analysis_list)
+    analysis_validate = commands.add_parser("media-analysis-validate"); analysis_validate.add_argument("analysis_id"); analysis_validate.set_defaults(handler=command_media_analysis_validate)
+    analysis_report = commands.add_parser("media-analysis-report"); analysis_report.add_argument("analysis_id"); analysis_report.set_defaults(handler=command_media_analysis_report)
+    import_from_media = commands.add_parser("import-plan-from-media"); import_from_media.add_argument("analysis_id"); import_from_media.add_argument("--policy", default="all-safe-members"); import_from_media.add_argument("--collection"); import_from_media.set_defaults(handler=command_import_plan_from_media)
+    media_trace = commands.add_parser("media-trace"); media_trace.add_argument("media_id"); media_trace.set_defaults(handler=command_media_trace)
     return command_parser
 
 

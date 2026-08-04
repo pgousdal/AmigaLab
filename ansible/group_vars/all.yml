@@ -69,6 +69,11 @@ amigalab_metadata_directories:
   - mirror-verification-events
   - mirror-reports
   - mirror-provenance
+  - media-analyses
+  - media-analysis-members
+  - media-analysis-events
+  - media-analysis-reports
+  - media-analysis-supersession
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
@@ -95,6 +100,16 @@ amigalab_mirror_unknown_length_max_bytes: 1073741824
 amigalab_mirror_free_space_margin_bytes: 1073741824
 amigalab_mirror_user_agent: "AmigaLab/2.17"
 amigalab_mirror_concurrency: 1
+amigalab_analysis_max_member_count: 100000
+amigalab_analysis_max_member_bytes: 1099511627776
+amigalab_analysis_allowed_adapters:
+  - directory
+  - zip
+  - tar
+  - iso
+amigalab_analysis_default_policy: all-safe-members
+amigalab_analysis_unknown_license: manual-review
+amigalab_analysis_deep_enabled: false
 amigalab_deployment_mode: standalone
 amigalab_shared:
   enabled: false
