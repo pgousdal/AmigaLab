@@ -34,6 +34,7 @@ from preservation.external.checks import InspectionStore, inspect_resumable
 from preservation.external.mirror_execution import MirrorExecutionStore, execute_mirror, resume_mirror, local_hashes
 from preservation.media_analysis import MediaAnalysisStore, analyze_media
 from preservation.media_import_plans import generate_import_plan, save_link
+from preservation.aminet_import import validate_media_plan, execute_media_plan
 from preservation.external.storage import ExternalStorage
 
 
@@ -219,6 +220,8 @@ def command_plan_approve(args: argparse.Namespace) -> int:
 def command_plan_validate(args: argparse.Namespace) -> int:
     plan = PlanStore(Path(args.metadata_root)).load(args.plan_id)
     diagnostics = []
+    if plan.source_id.startswith("media:"):
+        diagnostics.extend(validate_media_plan(plan, Path(args.metadata_root), Path(args.archive_root) / "media"))
     if plan.status in {"cancelled", "superseded", "completed"}:
         diagnostics.append(f"plan status is {plan.status}")
     if plan.import_mode not in {"media-only", "members-only", "media-and-members"}:
@@ -252,6 +255,10 @@ def command_plan_execute(args: argparse.Namespace) -> int:
     plan = store.load(args.plan_id)
     if plan.status != "approved":
         raise ValueError("plan must be approved before execution")
+    if plan.source_id.startswith("media:"):
+        copied, reused = execute_media_plan(plan, metadata_root, Path(args.archive_root), Path(args.staging_root), Path(args.media_root), yes=True)
+        print(f"transaction: import-{plan.id}\ncopied: {copied}\nreused: {reused}")
+        return 0
     if command_plan_validate(argparse.Namespace(plan_id=args.plan_id, metadata_root=str(metadata_root))) != 0:
         raise ValueError("plan validation failed")
     source = MetadataStore(metadata_root).get_source(plan.source_id)

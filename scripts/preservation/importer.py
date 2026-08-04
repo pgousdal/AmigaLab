@@ -136,7 +136,8 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
     transaction_id = transaction_id or f"selected-{source.id}"
     transaction_store = TransactionStore(store.root)
     event_store = EventStore(store.root)
-    adapter = None if location.is_dir() else __import__("preservation.sources", fromlist=["adapter_for"]).adapter_for(location, source.kind)
+    from .sources import adapter_for
+    adapter = None if location.is_dir() else adapter_for(location, source.kind)
     try:
       for relative_path in selected:
         entry = TransactionEntry(
@@ -147,12 +148,12 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
         entry = transaction_store.transition(entry, "opening-source", "opening-source", "import-member")
         source_root = location
         if adapter is not None:
-            entry = next((item for item in adapter.entries() if item.path == relative_path), None)
-            if entry is None or entry.unsupported_reason:
+            source_entry = next((item for item in adapter.entries() if item.path == relative_path), None)
+            if source_entry is None or source_entry.unsupported_reason:
                 raise ValueError(f"unsupported or missing archive member: {relative_path}")
             staged_source = stage / relative_path
             staged_source.parent.mkdir(parents=True, exist_ok=True)
-            with adapter.open(entry) as source_stream, staged_source.open("wb") as target_stream:
+            with adapter.open(source_entry) as source_stream, staged_source.open("wb") as target_stream:
                 shutil.copyfileobj(source_stream, target_stream)
             source_root = stage
             entry = transaction_store.transition(entry, "streaming", "streaming", "stream-member")
@@ -197,8 +198,8 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
                 temporary.unlink(missing_ok=True)
                 raise ValueError(f"destination verification failed: {relative_path}")
             temporary.replace(destination)
-        transaction_store.transition(entry, "copying", "copying", "place-destination")
-        transaction_store.transition(entry, "verifying", "verifying", "verify-destination")
+        entry = transaction_store.transition(entry, "copying", "copying", "place-destination")
+        entry = transaction_store.transition(entry, "verifying", "verifying", "verify-destination")
         store.save_import(event)
         store.save_object(candidate)
         file_record = candidate.files[0]
@@ -226,7 +227,7 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
                     original_member_path=sidecar.original_relative_path,
                     imported_target_path=str(destination_root / sidecar.original_relative_path),
                 ))
-        transaction_store.transition(entry, "metadata-writing", "metadata-writing", "write-object")
+        entry = transaction_store.transition(entry, "metadata-writing", "metadata-writing", "write-object")
         transaction_store.transition(entry, "completed", "completed", "complete-entry")
         copied += 1
     finally:

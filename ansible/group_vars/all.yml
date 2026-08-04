@@ -74,6 +74,9 @@ amigalab_metadata_directories:
   - media-analysis-events
   - media-analysis-reports
   - media-analysis-supersession
+  - import-approvals
+  - import-reports
+  - object-traces
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
