@@ -51,6 +51,12 @@ amigalab_metadata_directories:
   - recovery-executions
   - recovery-reports
   - recovery-locks
+  - external-sources
+  - external-checks
+  - external-snapshots
+  - external-changes
+  - mirror-plans
+  - mirror-plan-events
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
@@ -61,6 +67,12 @@ amigalab_media_directories:
   - commercial
   - personal-backups
   - unknown
+amigalab_external_cache_root: "{{ amigalab_storage_root }}/cache/external-providers"
+amigalab_external_enabled: false
+amigalab_external_request_timeout: 20
+amigalab_external_request_delay: 1
+amigalab_external_max_retries: 3
+amigalab_external_user_agent: "AmigaLab/2.15 (metadata inspection)"
 amigalab_deployment_mode: standalone
 amigalab_shared:
   enabled: false

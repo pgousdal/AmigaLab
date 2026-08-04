@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,13 @@ from preservation.plans import PlanStore, create_plan
 from preservation.recovery import RecoveryExecutor
 from preservation.recovery_workflow import RecoveryPlanStore, AuditReportStore, RecoveryOrchestrator, generate_plan, dry_run
 from preservation.verification import append_verification, verify_object
+from preservation.external.models import ExternalSource
+from preservation.external.registry import ExternalSourceStore
+from preservation.external.internet_archive import InternetArchiveProvider
+from preservation.external.snapshots import SnapshotStore, create_snapshot
+from preservation.external.changes import diff_snapshots
+from preservation.external.mirror_plans import MirrorPlanStore, create_mirror_plan
+from preservation.external.storage import ExternalStorage
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -333,6 +341,88 @@ def command_recovery_resume(args: argparse.Namespace) -> int:
     return {"completed": 0, "completed_with_skips": 1, "blocked": 2, "stale": 2, "failed": 3}.get(result.status, 3)
 
 
+def external_source_store(args: argparse.Namespace) -> ExternalSourceStore:
+    return ExternalSourceStore(Path(args.metadata_root))
+
+
+def command_external_source_add(args: argparse.Namespace) -> int:
+    source = ExternalSource(args.id, args.name, args.description, "internet-archive", args.locator, args.upstream_identifier, args.target, tuple(args.platform_tag), tuple(args.content_tag), args.license_profile, args.media_classification)
+    external_source_store(args).save(source)
+    print(source.id)
+    return 0
+
+
+def command_external_source_list(args: argparse.Namespace) -> int:
+    sources = [asdict(source) for source in external_source_store(args).list()]
+    print(json.dumps(sources, indent=2, sort_keys=True) if args.json else "\n".join(f"{item['id']}\t{item['upstream_identifier']}\t{item['target']}" for item in sources))
+    return 0
+
+
+def command_external_source_show(args: argparse.Namespace) -> int:
+    print(json.dumps(asdict(external_source_store(args).get(args.source_id)), indent=2, sort_keys=True))
+    return 0
+
+
+def command_external_source_check(args: argparse.Namespace) -> int:
+    source = external_source_store(args).get(args.source_id)
+    metadata, items, complete = InternetArchiveProvider().inspect(source, page_size=args.page_size)
+    check_id = sha256(f"{source.id}:{metadata}".encode()).hexdigest()[:16]
+    snapshot = create_snapshot(source.id, source.provider_type, check_id, metadata, items)
+    SnapshotStore(Path(args.metadata_root)).save(snapshot)
+    ExternalStorage(Path(args.metadata_root)).put("external-checks", check_id, {"id": check_id, "source_id": source.id, "status": "completed" if complete else "running", "snapshot_id": snapshot.id, "item_count": len(items)})
+    print(json.dumps(asdict(snapshot), indent=2, sort_keys=True) if args.json else snapshot.id)
+    return 0
+
+
+def command_external_snapshot_list(args: argparse.Namespace) -> int:
+    snapshots = SnapshotStore(Path(args.metadata_root)).list(args.source_id)
+    print(json.dumps(list(snapshots), indent=2, sort_keys=True))
+    return 0
+
+
+def command_external_snapshot_show(args: argparse.Namespace) -> int:
+    source = external_source_store(args).get(args.source_id)
+    print(json.dumps(SnapshotStore(Path(args.metadata_root)).get(args.snapshot_id, source.id), indent=2, sort_keys=True))
+    return 0
+
+
+def command_external_source_history(args: argparse.Namespace) -> int:
+    from preservation.external.checks import InspectionStore
+    print(json.dumps([asdict(item) for item in InspectionStore(Path(args.metadata_root)).list(args.source_id)], indent=2, sort_keys=True))
+    return 0
+
+
+def command_external_diff(args: argparse.Namespace) -> int:
+    storage = ExternalStorage(Path(args.metadata_root))
+    def load(snapshot_id: str):
+        for source in external_source_store(args).list():
+            for raw in SnapshotStore(Path(args.metadata_root)).list(source.id):
+                if raw.get("id") == snapshot_id:
+                    from preservation.external.models import ExternalItem, ExternalFile, ExternalSnapshot
+                    items = tuple(ExternalItem(**{**item, "subjects": tuple(item.get("subjects", ())), "collections": tuple(item.get("collections", ())), "files": tuple(ExternalFile(**file) for file in item.get("files", ()))}) for item in raw["items"])
+                    return ExternalSnapshot(**{**raw, "items": items, "warnings": tuple(raw.get("warnings", ()))})
+        raise ValueError(f"snapshot not found: {snapshot_id}")
+    print(json.dumps(diff_snapshots(load(args.old_snapshot_id), load(args.new_snapshot_id)), indent=2, sort_keys=True))
+    return 0
+
+
+def command_mirror_plan_create(args: argparse.Namespace) -> int:
+    source = external_source_store(args).get(args.source_id)
+    raw = SnapshotStore(Path(args.metadata_root)).get(args.snapshot_id, source.id)
+    from preservation.external.models import ExternalItem, ExternalFile, ExternalSnapshot
+    items = tuple(ExternalItem(**{**item, "subjects": tuple(item.get("subjects", ())), "collections": tuple(item.get("collections", ())), "files": tuple(ExternalFile(**file) for file in item.get("files", ()))}) for item in raw["items"])
+    snapshot = ExternalSnapshot(**{**raw, "items": items, "warnings": tuple(raw.get("warnings", ()))})
+    plan = create_mirror_plan(source.id, snapshot, args.policy)
+    MirrorPlanStore(Path(args.metadata_root)).save(plan)
+    print(plan.id)
+    return 0
+
+
+def command_mirror_plan_show(args: argparse.Namespace) -> int:
+    print(json.dumps(MirrorPlanStore(Path(args.metadata_root)).get(args.plan_id), indent=2, sort_keys=True))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -462,6 +552,18 @@ def parser() -> argparse.ArgumentParser:
     recovery_resume.add_argument("execution_id")
     recovery_resume.add_argument("--json", action="store_true")
     recovery_resume.set_defaults(handler=command_recovery_resume)
+    external_add = commands.add_parser("external-source-add")
+    external_add.add_argument("--id", required=True); external_add.add_argument("--name", required=True); external_add.add_argument("--description", default=""); external_add.add_argument("--locator", default="https://archive.org"); external_add.add_argument("--upstream-identifier", required=True); external_add.add_argument("--target", default="unknown"); external_add.add_argument("--platform-tag", action="append", default=[]); external_add.add_argument("--content-tag", action="append", default=[]); external_add.add_argument("--license-profile", default="unknown"); external_add.add_argument("--media-classification", default="unknown")
+    external_add.set_defaults(handler=command_external_source_add)
+    external_list = commands.add_parser("external-source-list"); external_list.add_argument("--json", action="store_true"); external_list.set_defaults(handler=command_external_source_list)
+    external_show = commands.add_parser("external-source-show"); external_show.add_argument("source_id"); external_show.set_defaults(handler=command_external_source_show)
+    external_check = commands.add_parser("external-source-check"); external_check.add_argument("source_id"); external_check.add_argument("--page-size", type=int, default=50); external_check.add_argument("--json", action="store_true"); external_check.set_defaults(handler=command_external_source_check)
+    snapshot_list = commands.add_parser("external-snapshot-list"); snapshot_list.add_argument("source_id"); snapshot_list.set_defaults(handler=command_external_snapshot_list)
+    snapshot_show = commands.add_parser("external-snapshot-show"); snapshot_show.add_argument("source_id"); snapshot_show.add_argument("snapshot_id"); snapshot_show.set_defaults(handler=command_external_snapshot_show)
+    source_history = commands.add_parser("external-source-history"); source_history.add_argument("source_id"); source_history.set_defaults(handler=command_external_source_history)
+    external_diff = commands.add_parser("external-diff"); external_diff.add_argument("old_snapshot_id"); external_diff.add_argument("new_snapshot_id"); external_diff.set_defaults(handler=command_external_diff)
+    mirror_create = commands.add_parser("mirror-plan-create"); mirror_create.add_argument("source_id"); mirror_create.add_argument("snapshot_id"); mirror_create.add_argument("--policy", default="original-media"); mirror_create.set_defaults(handler=command_mirror_plan_create)
+    mirror_show = commands.add_parser("mirror-plan-show"); mirror_show.add_argument("plan_id"); mirror_show.set_defaults(handler=command_mirror_plan_show)
     return command_parser
 
 

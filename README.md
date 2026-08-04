@@ -381,3 +381,9 @@ Copyright © 2026
 ---
 
 *"Preserving the past with the tools of the future."*
+# External metadata inspection
+
+AmigaLab M2.15 can register and inspect Internet Archive metadata sources and
+create canonical, download-free mirror proposals. See
+[docs/external-sources.md](docs/external-sources.md). Inspection never copies
+media, runs torrents, or modifies preserved collections.

@@ -48,6 +48,12 @@
     mode: '0755'
   loop: "{{ amigalab_metadata_directories }}"
 
+- name: Create external provider cache
+  ansible.builtin.file:
+    path: "{{ amigalab_external_cache_root }}"
+    state: directory
+    mode: '0755'
+
 - name: Create separate collection metadata directories
   ansible.builtin.file:
     path: "{{ amigalab_metadata_root }}/collections/{{ item }}"
