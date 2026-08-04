@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 import shutil
+from hashlib import sha256
 
 from .manifest import SIDECAR_SUFFIXES, append_provenance, create_object
 from .models import PreservationObject, Source
@@ -121,3 +122,36 @@ def import_source(
         existing[candidate.id] = candidate
         hash_index[_primary_sha256(candidate)] = candidate
     return preview
+
+
+def import_selected(location: Path, collection: str, source: Source, selected: tuple[str, ...], store: MetadataStore, archive_root: Path, staging_root: Path) -> tuple[int, int]:
+    """Copy exactly the approved entry set; no selection rules are reevaluated."""
+    stage = staging_root / source.id / "approved"
+    destination_root = archive_root / collection
+    copied = reused = 0
+    for relative_path in selected:
+        candidate, event = create_object(collection, location, relative_path, source)
+        target = destination_root / relative_path
+        if target.exists():
+            existing = preserved_file(collection, destination_root, relative_path)
+            if existing.hashes.sha256 != candidate.files[0].hashes.sha256:
+                raise ValueError(f"blocking destination conflict: {relative_path}")
+            store.save_import(event)
+            reused += 1
+            continue
+        for file in candidate.files:
+            staged = stage / file.original_relative_path
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(location / file.original_relative_path, staged)
+            destination = destination_root / file.original_relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(f".{destination.name}.amigalab-partial")
+            shutil.copy2(staged, temporary)
+            if sha256(temporary.read_bytes()).hexdigest() != file.hashes.sha256:
+                temporary.unlink(missing_ok=True)
+                raise ValueError(f"destination verification failed: {relative_path}")
+            temporary.replace(destination)
+        store.save_import(event)
+        store.save_object(candidate)
+        copied += 1
+    return copied, reused

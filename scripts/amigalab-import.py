@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from preservation.importer import SUPPORTED_SOURCE_KINDS, import_source, scan
+from preservation.importer import SUPPORTED_SOURCE_KINDS, import_selected, import_source, scan
 from preservation.conflicts import conflict_report
 from preservation.media import discover_candidates, register_media
 from preservation.models import Source
@@ -224,7 +224,13 @@ def command_plan_execute(args: argparse.Namespace) -> int:
     if source_fingerprint(Path(source.locator)) != plan.source_fingerprint:
         raise ValueError("source fingerprint changed since plan creation")
     store.event(plan, "execution-start", "approved plan execution")
-    print(f"execution ready: {plan.id}; selected entries: {len(plan.selected_entries)}")
+    transaction = new_transaction(source.id, plan.source_fingerprint, plan.destination_collection, plan.import_mode, plan.selected_entries)
+    transaction_store = TransactionStore(metadata_root)
+    transaction_store.save(transaction)
+    transaction_store.update(transaction, phase="copying")
+    copied, reused = import_selected(Path(source.locator), plan.destination_collection, source, plan.selected_entries, MetadataStore(metadata_root), Path(args.archive_root), Path(args.staging_root))
+    transaction_store.update(transaction, phase="completed", completed_entries=plan.selected_entries, pending_entries=(), result="success")
+    print(f"transaction: {transaction.id}\ncopied: {copied}\nreused: {reused}\nstatus: completed")
     return 0
 
 
