@@ -18,6 +18,7 @@ from preservation.storage import MetadataStore
 from preservation.transactions import TransactionStore, new_transaction, source_fingerprint
 from preservation.policy import validate_license_profile
 from preservation.plans import PlanStore, create_plan
+from preservation.recovery import RecoveryExecutor
 from preservation.verification import append_verification, verify_object
 
 
@@ -78,6 +79,14 @@ def command_transaction_status(args: argparse.Namespace) -> int:
     entries = TransactionStore(Path(args.metadata_root)).list_entries(transaction.id)
     summary = TransactionStore(Path(args.metadata_root)).summary(transaction.id)
     print(f"transaction: {transaction.id}\nphase: {transaction.phase}\nentries: {summary['total']}\ncompleted: {summary['completed']}\nreused: {summary['reused']}\nfailed: {summary['failed']}\nattempts: {summary['attempts']}")
+    return 0
+
+
+def command_transaction_reconcile(args: argparse.Namespace) -> int:
+    store = TransactionStore(Path(args.metadata_root))
+    transaction = store.load(args.transaction_id)
+    summary = store.summary(transaction.id)
+    print(json.dumps({"transaction_id": transaction.id, "summary": summary, "reconciliation": "read-only"}, indent=2, sort_keys=True))
     return 0
 
 
@@ -330,6 +339,9 @@ def parser() -> argparse.ArgumentParser:
     status = commands.add_parser("transaction-status", help="show canonical transaction state")
     status.add_argument("transaction_id")
     status.set_defaults(handler=command_transaction_status)
+    reconcile = commands.add_parser("transaction-reconcile", help="read-only canonical transaction reconciliation")
+    reconcile.add_argument("transaction_id")
+    reconcile.set_defaults(handler=command_transaction_reconcile)
     resume = commands.add_parser("transaction-resume", help="resume an unchanged source transaction")
     resume.add_argument("transaction_id")
     resume.add_argument("--yes", action="store_true")
