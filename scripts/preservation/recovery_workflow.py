@@ -13,9 +13,12 @@ import json
 import os
 from pathlib import Path
 from typing import Iterable
+from uuid import uuid4
 
 from .models import TransactionEntry
 from .services import hash_file, validate_staging, verify_destination
+from .recovery import RecoveryContext, RecoveryExecutor
+from .transactions import TransactionStore
 
 
 def _now() -> str:
@@ -151,6 +154,9 @@ class ExecutionState:
     source_observations: dict[str, str] = field(default_factory=dict)
     destination_results: dict[str, str] = field(default_factory=dict)
     persisted_records: tuple[str, ...] = ()
+    schema_version: int = 1
+    revision: int = 0
+    checkpoint: str = ""
 
 
 class ExecutionStateStore:
@@ -164,6 +170,9 @@ class ExecutionStateStore:
         data = json.loads((self.root / "recovery-executions" / f"{execution_id}.json").read_text(encoding="utf-8"))
         for key in ("completed_actions", "skipped_actions", "failed_actions", "failures", "persisted_records"):
             data[key] = tuple(data.get(key, ()))
+        data.setdefault("schema_version", 1)
+        data.setdefault("revision", 0)
+        data.setdefault("checkpoint", "")
         return ExecutionState(**data)
 
 
@@ -254,3 +263,113 @@ class PlanLock:
     def __exit__(self, *_: object) -> None:
         if self._owned:
             self.path.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class OrchestrationResult:
+    execution_id: str
+    status: str
+    report: AuditReport
+
+
+class RecoveryOrchestrator:
+    """Sequential, checkpointed execution of one immutable recovery plan."""
+
+    def __init__(self, metadata_root: Path, plan_store: RecoveryPlanStore | None = None,
+                 state_store: ExecutionStateStore | None = None):
+        self.root = metadata_root
+        self.plans = plan_store or RecoveryPlanStore(metadata_root)
+        self.states = state_store or ExecutionStateStore(metadata_root)
+        self.reports = AuditReportStore(metadata_root)
+
+    def _checkpoint(self, state: ExecutionState, **changes: object) -> ExecutionState:
+        updated = ExecutionState(**{**asdict(state), **changes,
+                                   "updated_at": _now(), "revision": state.revision + 1})
+        self.states.save(updated)
+        return updated
+
+    def execute(self, plan: RecoveryPlan, entries: Iterable[TransactionEntry], *,
+                execution_id: str | None = None, resume: bool = False,
+                source: Path | None = None) -> OrchestrationResult:
+        execution_id = execution_id or str(uuid4())
+        state = self.states.load(execution_id) if resume else ExecutionState(
+            plan.id, execution_id, _now(), _now(), "created", checkpoint="initialized")
+        if state.plan_id != plan.id:
+            raise ValueError("execution state plan ID does not match recovery plan")
+        if state.schema_version != plan.schema_version:
+            raise ValueError("unsupported execution state schema")
+        entry_map = {entry.id: entry for entry in entries}
+        with PlanLock(self.root, plan.id):
+            transaction_store = TransactionStore(self.root)
+            for entry in entry_map.values():
+                transaction_store.save_entry(entry)
+            state = self._checkpoint(state, status="validating", checkpoint="plan-and-source-validation")
+            if source is not None and not source_matches(plan, source):
+                report = AuditReport(plan.id, execution_id, "stale", plan.identity, {"stale_plan": 1}, stale_plan=True)
+                self.reports.save(report, execution_id)
+                state = self._checkpoint(state, status="blocked", failures=("source fingerprint changed",), checkpoint="stale-source")
+                return OrchestrationResult(execution_id, state.status, report)
+            state = self._checkpoint(state, status="running", checkpoint="actions")
+            counts: dict[str, int] = {}
+            blocked: list[str] = []
+            failures: list[str] = []
+            copied: list[str] = []
+            reused: list[str] = []
+            verified: list[str] = []
+            executor = RecoveryExecutor(transaction_store, context=RecoveryContext(Path(plan.staging_path), Path(plan.destination_path)))
+            for action in plan.actions:
+                prior = state.actions.get(action.id)
+                entry = entry_map.get(action.entry_id)
+                if entry is None:
+                    failures.append(f"missing entry: {action.entry_id}")
+                    counts["failed"] = counts.get("failed", 0) + 1
+                    continue
+                if prior == "completed":
+                    counts["already_satisfied"] = counts.get("already_satisfied", 0) + 1
+                    continue
+                dependencies = [state.actions.get(dep) for dep in action.dependencies]
+                if any(value not in {"completed", "skipped"} for value in dependencies):
+                    blocked.append(action.id)
+                    counts["blocked"] = counts.get("blocked", 0) + 1
+                    state = self._checkpoint(state, actions={**state.actions, action.id: "blocked"}, checkpoint=f"blocked:{action.id}")
+                    continue
+                state = self._checkpoint(state, actions={**state.actions, action.id: "running"}, checkpoint=f"start:{action.id}")
+                try:
+                    result = executor.execute(entry, "copy-from-staging" if entry.state in {"staged", "ready-to-copy"} else None)
+                    if result.diagnostic and not result.changed:
+                        raise ValueError(result.diagnostic)
+                    if result.state == "verifying":
+                        refreshed = TransactionStore(self.root).list_entries(entry.transaction_id)
+                        current = next(item for item in refreshed if item.id == entry.id)
+                        result = executor.execute(current, "verify-destination")
+                    if result.diagnostic and not result.changed:
+                        raise ValueError(result.diagnostic)
+                    state = self._checkpoint(state, actions={**state.actions, action.id: "completed"}, completed_actions=tuple(dict.fromkeys((*state.completed_actions, action.id))), checkpoint=f"complete:{action.id}")
+                    counts["completed"] = counts.get("completed", 0) + 1
+                    copied.append(action.destination_path)
+                    verified.append(action.destination_path)
+                except Exception as error:
+                    failures.append(str(error))
+                    counts["failed"] = counts.get("failed", 0) + 1
+                    state = self._checkpoint(state, status="failed", actions={**state.actions, action.id: "failed"}, failed_actions=tuple(dict.fromkeys((*state.failed_actions, action.id))), failures=tuple(failures), checkpoint=f"failure:{action.id}")
+                    break
+            if failures:
+                status = "failed"
+            elif blocked:
+                status = "blocked"
+            else:
+                status = "completed_with_skips" if counts.get("already_satisfied") else "completed"
+            state = self._checkpoint(state, status=status, checkpoint="terminal")
+            report = AuditReport(plan.id, execution_id, status, plan.identity, counts,
+                                 tuple(copied), tuple(reused), tuple(verified),
+                                 blocked_actions=tuple(blocked), failures=tuple(failures),
+                                 resume_eligible=status not in {"completed", "completed_with_skips"})
+            self.reports.save(report, execution_id)
+            return OrchestrationResult(execution_id, status, report)
+
+    def resume(self, plan: RecoveryPlan, execution_id: str, entries: Iterable[TransactionEntry], *, source: Path | None = None) -> OrchestrationResult:
+        state = self.states.load(execution_id)
+        if state.status in {"completed", "completed_with_skips"}:
+            report = self.reports.load(execution_id)
+            return OrchestrationResult(execution_id, state.status, report)
+        return self.execute(plan, entries, execution_id=execution_id, resume=True, source=source)

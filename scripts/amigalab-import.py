@@ -20,7 +20,7 @@ from preservation.transactions import TransactionStore, new_transaction, source_
 from preservation.policy import validate_license_profile
 from preservation.plans import PlanStore, create_plan
 from preservation.recovery import RecoveryExecutor
-from preservation.recovery_workflow import RecoveryPlanStore, AuditReportStore, generate_plan, dry_run
+from preservation.recovery_workflow import RecoveryPlanStore, AuditReportStore, RecoveryOrchestrator, generate_plan, dry_run
 from preservation.verification import append_verification, verify_object
 
 
@@ -315,6 +315,24 @@ def command_recovery_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_recovery_execute(args: argparse.Namespace) -> int:
+    metadata_root = Path(args.metadata_root)
+    plan = RecoveryPlanStore(metadata_root).load(args.plan_id)
+    entries = TransactionStore(metadata_root).list_entries(plan.identity)
+    result = RecoveryOrchestrator(metadata_root).execute(plan, entries, source=Path(plan.source_path) if plan.source_path else None)
+    print(json.dumps(asdict(result.report), indent=2, sort_keys=True) if args.json else result.report.human())
+    return {"completed": 0, "completed_with_skips": 1, "blocked": 2, "stale": 2, "failed": 3}.get(result.status, 3)
+
+
+def command_recovery_resume(args: argparse.Namespace) -> int:
+    metadata_root = Path(args.metadata_root)
+    plan = RecoveryPlanStore(metadata_root).load(args.plan_id)
+    entries = TransactionStore(metadata_root).list_entries(plan.identity)
+    result = RecoveryOrchestrator(metadata_root).resume(plan, args.execution_id, entries, source=Path(plan.source_path) if plan.source_path else None)
+    print(json.dumps(asdict(result.report), indent=2, sort_keys=True) if args.json else result.report.human())
+    return {"completed": 0, "completed_with_skips": 1, "blocked": 2, "stale": 2, "failed": 3}.get(result.status, 3)
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -435,6 +453,15 @@ def parser() -> argparse.ArgumentParser:
     recovery_report = commands.add_parser("recovery-report", help="show a persisted recovery report")
     recovery_report.add_argument("report_id")
     recovery_report.set_defaults(handler=command_recovery_report)
+    recovery_execute = commands.add_parser("recovery-execute", help="execute a persisted recovery plan")
+    recovery_execute.add_argument("plan_id")
+    recovery_execute.add_argument("--json", action="store_true")
+    recovery_execute.set_defaults(handler=command_recovery_execute)
+    recovery_resume = commands.add_parser("recovery-resume", help="resume a persisted recovery execution")
+    recovery_resume.add_argument("plan_id")
+    recovery_resume.add_argument("execution_id")
+    recovery_resume.add_argument("--json", action="store_true")
+    recovery_resume.set_defaults(handler=command_recovery_resume)
     return command_parser
 
 
