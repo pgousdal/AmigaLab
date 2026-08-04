@@ -26,6 +26,15 @@ VALID_TRANSITIONS = {
     "failed": {"pending", "opening-source"},
 }
 
+RECOVERY_ACTIONS = {
+    "pending": "start-entry", "opening-source": "restart-stream", "streaming": "restart-stream",
+    "staging": "validate-staging", "staged": "copy-from-staging", "hashing": "rehash-staging",
+    "ready-to-copy": "copy-from-staging", "copying": "finalize-temporary-destination",
+    "verifying": "verify-destination", "metadata-writing": "complete-metadata",
+    "completed": "skip-completed", "reused": "skip-completed", "provenance-only": "complete-provenance",
+    "skipped": "skip-completed", "blocked": "wait-for-conflict", "failed": "restart-stream",
+}
+
 PHASES = ("planned", "scanning", "staging", "hashing", "metadata-writing", "copying", "verifying", "completed", "failed", "cancelled")
 
 
@@ -87,6 +96,16 @@ class TransactionStore:
             if data.get("transaction_id") == transaction_id:
                 result.append(TransactionEntry(**data))
         return tuple(result)
+
+    def recovery_plan(self, transaction_id: str) -> tuple[dict[str, str], ...]:
+        return tuple({"entry_id": entry.id, "state": entry.state, "action": RECOVERY_ACTIONS.get(entry.state, "fail-permanently")} for entry in self.list_entries(transaction_id))
+
+    def summary(self, transaction_id: str) -> dict[str, int]:
+        entries = self.list_entries(transaction_id)
+        states = {state: sum(entry.state == state for entry in entries) for state in ("pending", "opening-source", "streaming", "staging", "staged", "hashing", "ready-to-copy", "copying", "verifying", "metadata-writing", "completed", "reused", "provenance-only", "skipped", "blocked", "failed")}
+        states["total"] = len(entries)
+        states["attempts"] = sum(entry.attempts for entry in entries)
+        return states
 
     def transition(self, entry: TransactionEntry, new_state: str, phase: str, operation: str, result: str = "") -> TransactionEntry:
         if new_state not in VALID_TRANSITIONS.get(entry.state, set()):

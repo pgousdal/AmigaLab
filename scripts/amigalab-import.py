@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -75,7 +76,8 @@ def command_import(args: argparse.Namespace) -> int:
 def command_transaction_status(args: argparse.Namespace) -> int:
     transaction = TransactionStore(Path(args.metadata_root)).load(args.transaction_id)
     entries = TransactionStore(Path(args.metadata_root)).list_entries(transaction.id)
-    print(f"transaction: {transaction.id}\nphase: {transaction.phase}\nentries: {len(entries)}\ncompleted: {sum(e.state in {'completed','reused'} for e in entries)}\nfailed: {sum(e.state == 'failed' for e in entries)}")
+    summary = TransactionStore(Path(args.metadata_root)).summary(transaction.id)
+    print(f"transaction: {transaction.id}\nphase: {transaction.phase}\nentries: {summary['total']}\ncompleted: {summary['completed']}\nreused: {summary['reused']}\nfailed: {summary['failed']}\nattempts: {summary['attempts']}")
     return 0
 
 
@@ -83,6 +85,9 @@ def command_transaction_resume(args: argparse.Namespace) -> int:
     metadata_root = Path(args.metadata_root)
     store = MetadataStore(metadata_root)
     transaction = TransactionStore(metadata_root).load(args.transaction_id)
+    if getattr(args, "plan_only", False):
+        print(json.dumps(TransactionStore(metadata_root).recovery_plan(transaction.id), indent=2, sort_keys=True))
+        return 0
     if not args.yes:
         print(f"resume requires confirmation: {transaction.id}", file=sys.stderr)
         return 1
@@ -328,6 +333,7 @@ def parser() -> argparse.ArgumentParser:
     resume = commands.add_parser("transaction-resume", help="resume an unchanged source transaction")
     resume.add_argument("transaction_id")
     resume.add_argument("--yes", action="store_true")
+    resume.add_argument("--plan-only", action="store_true")
     resume.set_defaults(handler=command_transaction_resume)
     conflicts = commands.add_parser("conflict-report", help="write structured path conflict JSON")
     conflicts.add_argument("location")
