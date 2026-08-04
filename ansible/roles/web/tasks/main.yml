@@ -1,0 +1,23 @@
+---
+- name: Validate AmigaLab web configuration
+  ansible.builtin.assert:
+    that:
+      - amigalab_web_bind is string
+      - amigalab_web_port | int >= 1
+      - amigalab_web_port | int <= 65535
+      - amigalab_web_bind == '127.0.0.1' or amigalab_web_enabled | bool
+    fail_msg: AmigaLab web must be enabled explicitly for non-localhost binding.
+
+- name: Create AmigaLab web runtime directory
+  ansible.builtin.file:
+    path: "{{ amigalab_storage_root }}/run/web"
+    state: directory
+    mode: '0750'
+
+- name: Install disabled-by-default AmigaLab catalog web service
+  ansible.builtin.template:
+    src: amigalab-catalog-web.service.j2
+    dest: /etc/systemd/system/amigalab-catalog-web.service
+    mode: '0644'
+  when: amigalab_web_enabled | bool
+  notify: Reload AmigaLab web systemd

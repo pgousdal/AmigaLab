@@ -1,0 +1,16 @@
+[Unit]
+Description=AmigaLab local read-only catalog web interface
+After=local-fs.target
+
+[Service]
+Type=simple
+User={{ amigalab_owner | default('root') }}
+ExecStart=/usr/bin/python3 /srv/amigalab/scripts/amigalab-import.py web-run --bind {{ amigalab_web_bind }} --port {{ amigalab_web_port }} --enabled
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/amigalab/aminet /srv/amigalab/media /srv/amigalab/metadata
+ReadWritePaths=/srv/amigalab/run/web
+

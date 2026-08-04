@@ -399,6 +399,10 @@ or executes mirror, import, or repair plans automatically. Use
 The local catalog (`catalog-build`, `search`, `catalog-verify`) is a
 rebuildable SQLite/FTS5 index. Canonical metadata and preserved files remain
 authoritative; Meilisearch is optional.
+
+The optional M2.23 catalog web interface is a localhost-only, read-only view
+over SQLite. It does not approve plans, execute operations, or expose file
+bodies by default.
 # External metadata inspection
 
 AmigaLab M2.15 can register and inspect Internet Archive metadata sources and

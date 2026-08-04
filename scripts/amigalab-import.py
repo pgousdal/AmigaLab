@@ -41,6 +41,7 @@ from preservation.traces import object_trace, file_trace, media_trace as enriche
 from preservation.relationship_backfill import create_plan as create_relationship_backfill_plan
 from preservation.operations import OperationsRun, OperationsStore, OperationsLock, operations_preview, retention_plan, validate_operations_config, now
 from preservation.catalog import build_catalog, CatalogIndex, verify_catalog
+from preservation.web import WebConfig, create_app, run as run_web
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -784,6 +785,25 @@ def command_catalog_history(args):
     print(json.dumps(list(ExternalStorage(Path(args.metadata_root)).list("catalog-builds")), indent=2, sort_keys=True)); return 0
 
 
+def command_web_config_check(args):
+    config = WebConfig(_catalog_db(args), args.bind, args.port, enabled=args.enabled)
+    config.validate()
+    if config.bind != "127.0.0.1" and not config.enabled:
+        raise ValueError("remote AmigaLab web binding requires --enabled acknowledgement")
+    print(json.dumps({"valid": True, "bind": config.bind, "port": config.port, "database": str(config.database), "enabled": config.enabled}, sort_keys=True)); return 0
+
+
+def command_web_status(args):
+    config = WebConfig(_catalog_db(args), args.bind, args.port)
+    health = verify_catalog(config.database) if config.database.is_file() else {"valid": False, "error": "catalog unavailable"}
+    print(json.dumps({"configured": config.enabled, "bind": config.bind, "port": config.port, "catalog": health}, indent=2, sort_keys=True)); return 0
+
+
+def command_web_run(args):
+    run_web(WebConfig(_catalog_db(args), args.bind, args.port, enabled=args.enabled))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -846,6 +866,9 @@ def parser() -> argparse.ArgumentParser:
     catalog_show_cmd = commands.add_parser("catalog-show"); catalog_show_cmd.add_argument("document_id"); catalog_show_cmd.add_argument("--catalog-database"); catalog_show_cmd.set_defaults(handler=command_catalog_show)
     catalog_stats_cmd = commands.add_parser("catalog-stats"); catalog_stats_cmd.add_argument("--catalog-database"); catalog_stats_cmd.set_defaults(handler=command_catalog_stats)
     catalog_history_cmd = commands.add_parser("catalog-build-history"); catalog_history_cmd.set_defaults(handler=command_catalog_history)
+    web_run_cmd = commands.add_parser("web-run"); web_run_cmd.add_argument("--bind", default="127.0.0.1"); web_run_cmd.add_argument("--port", type=int, default=8787); web_run_cmd.add_argument("--enabled", action="store_true"); web_run_cmd.set_defaults(handler=command_web_run)
+    web_status_cmd = commands.add_parser("web-status"); web_status_cmd.add_argument("--bind", default="127.0.0.1"); web_status_cmd.add_argument("--port", type=int, default=8787); web_status_cmd.set_defaults(handler=command_web_status)
+    web_config_cmd = commands.add_parser("web-config-check"); web_config_cmd.add_argument("--bind", default="127.0.0.1"); web_config_cmd.add_argument("--port", type=int, default=8787); web_config_cmd.add_argument("--enabled", action="store_true"); web_config_cmd.set_defaults(handler=command_web_config_check)
 
     media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
     media_scan.add_argument("location")

@@ -145,6 +145,15 @@ amigalab_catalog_timer_enabled: false
 amigalab_meilisearch_enabled: false
 amigalab_meilisearch_url: http://127.0.0.1:7700
 amigalab_meilisearch_index: amigalab_catalog
+amigalab_web_enabled: false
+amigalab_web_bind: 127.0.0.1
+amigalab_web_port: 8787
+amigalab_web_catalog_database: "{{ amigalab_catalog_database }}"
+amigalab_web_allow_file_downloads: false
+amigalab_web_allow_restricted_metadata: true
+amigalab_web_allow_restricted_file_access: false
+amigalab_web_page_size: 25
+amigalab_web_max_page_size: 100
 amigalab_operations_enabled: false
 amigalab_operations:
   source_checks:
