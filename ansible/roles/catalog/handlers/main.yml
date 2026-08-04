@@ -1,0 +1,4 @@
+---
+- name: Reload AmigaLab catalog systemd
+  ansible.builtin.systemd:
+    daemon_reload: true

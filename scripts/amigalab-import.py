@@ -42,6 +42,8 @@ from preservation.relationship_backfill import create_plan as create_relationshi
 from preservation.operations import OperationsRun, OperationsStore, OperationsLock, operations_preview, retention_plan, validate_operations_config, now
 from preservation.catalog import build_catalog, CatalogIndex, verify_catalog
 from preservation.web import WebConfig, create_app, run as run_web
+from preservation.catalog.builder import build_documents
+from preservation.catalog.meilisearch import MeiliClient, validate_endpoint
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -804,6 +806,40 @@ def command_web_run(args):
     return 0
 
 
+def _meili(args):
+    from os import environ
+    return MeiliClient(args.endpoint, args.index, args.timeout, environ.get("AMIGALAB_MEILISEARCH_API_KEY", ""))
+
+
+def command_meilisearch_sync(args):
+    client = _meili(args); documents = build_documents(Path(args.metadata_root), Path(args.archive_root), args.max_text_bytes)
+    result = client.sync(list(documents), args.batch_size)
+    report = {"id": sha256(json.dumps({"index": args.index, "count": len(documents), "result": result.status}, sort_keys=True).encode()).hexdigest(), "index": args.index, "documents_considered": len(documents), "documents_added": result.added, "documents_updated": result.updated, "errors": result.errors, "status": result.status}
+    ExternalStorage(Path(args.metadata_root)).put("catalog/meilisearch-syncs", report["id"], report)
+    print(json.dumps(report, indent=2, sort_keys=True)); return 0 if result.status == "success" else 3
+
+
+def command_meilisearch_status(args):
+    try: result = _meili(args).health(); output = {"configured": True, "healthy": True, "health": result}
+    except (OSError, ValueError) as error: output = {"configured": True, "healthy": False, "error": str(error)}
+    print(json.dumps(output, indent=2, sort_keys=True)); return 0 if output["healthy"] else 1
+
+
+def command_meilisearch_verify(args):
+    return command_meilisearch_status(args)
+
+
+def command_meilisearch_clear(args):
+    if not args.yes: raise PermissionError("Meilisearch clear requires --yes")
+    client = _meili(args); client._request("DELETE", f"/indexes/{client.index}"); print(client.index); return 0
+
+
+def command_web_verify(args):
+    config = WebConfig(_catalog_db(args), args.bind, args.port, enabled=args.enabled); config.validate()
+    result = verify_catalog(config.database) if config.database.is_file() else {"valid": False, "error": "catalog unavailable"}
+    print(json.dumps({"config_valid": True, "catalog": result, "read_only": True}, indent=2, sort_keys=True)); return 0 if result.get("valid") else 1
+
+
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
@@ -869,6 +905,11 @@ def parser() -> argparse.ArgumentParser:
     web_run_cmd = commands.add_parser("web-run"); web_run_cmd.add_argument("--bind", default="127.0.0.1"); web_run_cmd.add_argument("--port", type=int, default=8787); web_run_cmd.add_argument("--enabled", action="store_true"); web_run_cmd.set_defaults(handler=command_web_run)
     web_status_cmd = commands.add_parser("web-status"); web_status_cmd.add_argument("--bind", default="127.0.0.1"); web_status_cmd.add_argument("--port", type=int, default=8787); web_status_cmd.set_defaults(handler=command_web_status)
     web_config_cmd = commands.add_parser("web-config-check"); web_config_cmd.add_argument("--bind", default="127.0.0.1"); web_config_cmd.add_argument("--port", type=int, default=8787); web_config_cmd.add_argument("--enabled", action="store_true"); web_config_cmd.set_defaults(handler=command_web_config_check)
+    web_verify_cmd = commands.add_parser("web-verify"); web_verify_cmd.add_argument("--bind", default="127.0.0.1"); web_verify_cmd.add_argument("--port", type=int, default=8787); web_verify_cmd.add_argument("--enabled", action="store_true"); web_verify_cmd.set_defaults(handler=command_web_verify)
+    meili_sync = commands.add_parser("meilisearch-sync"); meili_sync.add_argument("--endpoint", default="http://127.0.0.1:7700"); meili_sync.add_argument("--index", default="amigalab_catalog"); meili_sync.add_argument("--timeout", type=int, default=15); meili_sync.add_argument("--batch-size", type=int, default=500); meili_sync.add_argument("--max-text-bytes", type=int, default=1048576); meili_sync.set_defaults(handler=command_meilisearch_sync)
+    meili_status = commands.add_parser("meilisearch-status"); meili_status.add_argument("--endpoint", default="http://127.0.0.1:7700"); meili_status.add_argument("--index", default="amigalab_catalog"); meili_status.add_argument("--timeout", type=int, default=15); meili_status.set_defaults(handler=command_meilisearch_status)
+    meili_verify = commands.add_parser("meilisearch-verify"); meili_verify.add_argument("--endpoint", default="http://127.0.0.1:7700"); meili_verify.add_argument("--index", default="amigalab_catalog"); meili_verify.add_argument("--timeout", type=int, default=15); meili_verify.add_argument("--full", action="store_true"); meili_verify.set_defaults(handler=command_meilisearch_verify)
+    meili_clear = commands.add_parser("meilisearch-clear"); meili_clear.add_argument("--endpoint", default="http://127.0.0.1:7700"); meili_clear.add_argument("--index", default="amigalab_catalog"); meili_clear.add_argument("--timeout", type=int, default=15); meili_clear.add_argument("--yes", action="store_true"); meili_clear.set_defaults(handler=command_meilisearch_clear)
 
     media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
     media_scan.add_argument("location")

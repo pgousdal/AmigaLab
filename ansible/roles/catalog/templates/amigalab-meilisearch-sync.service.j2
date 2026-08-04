@@ -1,0 +1,13 @@
+[Unit]
+Description=AmigaLab optional catalog Meilisearch synchronization
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User={{ amigalab_owner | default('root') }}
+ExecStart=/usr/bin/python3 /srv/amigalab/scripts/amigalab-import.py meilisearch-sync --endpoint {{ amigalab_meilisearch_url }} --index {{ amigalab_meilisearch_index }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/amigalab/metadata /srv/amigalab/aminet /srv/amigalab/media

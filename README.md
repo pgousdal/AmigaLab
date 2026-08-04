@@ -400,6 +400,9 @@ The local catalog (`catalog-build`, `search`, `catalog-verify`) is a
 rebuildable SQLite/FTS5 index. Canonical metadata and preserved files remain
 authoritative; Meilisearch is optional.
 
+M2.24 adds richer entity/API views and explicit optional Meilisearch sync;
+SQLite remains the default local backend and the interface remains read-only.
+
 The optional M2.23 catalog web interface is a localhost-only, read-only view
 over SQLite. It does not approve plans, execute operations, or expose file
 bodies by default.

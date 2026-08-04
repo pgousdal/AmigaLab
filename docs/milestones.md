@@ -8,4 +8,5 @@
 - M2.21 Scheduled operations and retention controls ✅
 - M2.22 Local catalog and full-text search ✅
 - M2.23 Local read-only catalog web interface ✅
+- M2.24 Rich catalog views and optional Meilisearch synchronization ✅
 - M3 BBS Museum ⏳

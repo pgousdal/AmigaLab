@@ -14,3 +14,11 @@
       - amigalab_catalog_database is match('^/srv/amigalab/')
       - amigalab_meilisearch_index is match('^amigalab[_-]')
     fail_msg: Catalog paths and indexes must remain AmigaLab-namespaced.
+
+- name: Install optional AmigaLab Meilisearch sync service
+  ansible.builtin.template:
+    src: amigalab-meilisearch-sync.service.j2
+    dest: /etc/systemd/system/amigalab-meilisearch-sync.service
+    mode: '0644'
+  when: amigalab_meilisearch_enabled | bool
+  notify: Reload AmigaLab catalog systemd
