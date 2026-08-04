@@ -73,6 +73,35 @@ class ImportTransaction:
 
 
 @dataclass(frozen=True)
+class TransactionEntry:
+    id: str
+    transaction_id: str
+    source_path: str
+    target_path: str
+    staging_path: str
+    expected_hashes: Hashes | None = None
+    observed_hashes: Hashes | None = None
+    bytes_processed: int = 0
+    state: str = "pending"
+    attempts: int = 0
+    error: str = ""
+    verification_event_ids: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class TransactionEvent:
+    id: str
+    transaction_id: str
+    entry_id: str | None
+    previous_state: str
+    new_state: str
+    phase: str
+    operation: str
+    timestamp: str
+    result: str = ""
+
+
+@dataclass(frozen=True)
 class ImportEvent:
     id: str
     timestamp: str

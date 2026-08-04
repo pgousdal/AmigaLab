@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 from hashlib import sha256
 
-from .models import ImportTransaction
+from .models import ImportTransaction, TransactionEntry, TransactionEvent
 
 PHASES = ("planned", "scanning", "staging", "hashing", "metadata-writing", "copying", "verifying", "completed", "failed", "cancelled")
 
@@ -47,3 +47,19 @@ class TransactionStore:
         updated = replace(transaction, updated_at=datetime.now(timezone.utc).isoformat(), **changes)
         self.save(updated)
         return updated
+
+    def save_entry(self, entry: TransactionEntry) -> Path:
+        directory = self.root / "entries"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{entry.id}.json"
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(asdict(entry), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(path)
+        return path
+
+    def append_event(self, event: TransactionEvent) -> Path:
+        directory = self.root / "events"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{event.id}.json"
+        path.write_text(json.dumps(asdict(event), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return path
