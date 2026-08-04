@@ -44,6 +44,7 @@ from preservation.catalog import build_catalog, CatalogIndex, verify_catalog
 from preservation.web import WebConfig, create_app, run as run_web
 from preservation.catalog.builder import build_documents
 from preservation.catalog.meilisearch import MeiliClient, validate_endpoint
+from preservation.version import __version__
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -843,6 +844,7 @@ def command_web_verify(args):
 def parser() -> argparse.ArgumentParser:
     default_root = os.environ.get("AMIGALAB_STORAGE_ROOT", "/srv/amigalab")
     command_parser = argparse.ArgumentParser(description=__doc__)
+    command_parser.add_argument("--version", action="version", version=f"AmigaLab {__version__}")
     command_parser.add_argument("--archive-root", default=default_root)
     command_parser.add_argument("--metadata-root", default=f"{default_root}/metadata")
     command_parser.add_argument("--staging-root", default=f"{default_root}/staging")
