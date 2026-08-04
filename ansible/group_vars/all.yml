@@ -77,6 +77,14 @@ amigalab_metadata_directories:
   - import-approvals
   - import-reports
   - object-traces
+  - verification-reports
+  - verification-findings
+  - file-traces
+  - trace-links
+  - reconciliation-reports
+  - repair-plans
+  - repair-plan-events
+  - relationship-backfills
 amigalab_media_root: /srv/amigalab/media
 amigalab_media_directories:
   - amiga-forever
@@ -113,6 +121,12 @@ amigalab_analysis_allowed_adapters:
 amigalab_analysis_default_policy: all-safe-members
 amigalab_analysis_unknown_license: manual-review
 amigalab_analysis_deep_enabled: false
+amigalab_verification_default_policy: full-hashes
+amigalab_verification_chunk_size: 1048576
+amigalab_verification_recent_trust_window: 86400
+amigalab_verification_trace_depth_limit: 32
+amigalab_repair_plan_enabled: true
+amigalab_relationship_backfill_enabled: true
 amigalab_deployment_mode: standalone
 amigalab_shared:
   enabled: false

@@ -381,6 +381,13 @@ Copyright © 2026
 ---
 
 *"Preserving the past with the tools of the future."*
+
+## Aminet verification (M2.20)
+
+Use `aminet-verify`, `object-trace`, `file-trace`, and
+`collection-reconcile` for offline, read-only integrity and provenance
+checks. Reports and repair plans are canonical metadata; they never modify
+preserved collection or media content.
 # External metadata inspection
 
 AmigaLab M2.15 can register and inspect Internet Archive metadata sources and

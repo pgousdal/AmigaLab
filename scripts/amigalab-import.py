@@ -36,6 +36,9 @@ from preservation.media_analysis import MediaAnalysisStore, analyze_media
 from preservation.media_import_plans import generate_import_plan, save_link
 from preservation.aminet_import import validate_media_plan, execute_media_plan
 from preservation.external.storage import ExternalStorage
+from preservation.verification_reports import verify_collection, VerificationReportStore, reconciliation, repair_plan
+from preservation.traces import object_trace, file_trace, media_trace as enriched_media_trace
+from preservation.relationship_backfill import create_plan as create_relationship_backfill_plan
 
 
 def roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -132,17 +135,18 @@ def command_transaction_resume(args: argparse.Namespace) -> int:
 
 def command_verify(args: argparse.Namespace) -> int:
     archive_root, metadata_root, _ = roots(args)
+    collection_name = getattr(args, "collection_name", None) or args.collection
     store = MetadataStore(metadata_root)
     failures = 0
     for object_ in store.list_objects():
-        if object_.original_collection != args.collection:
+        if object_.original_collection != collection_name:
             continue
-        event = verify_object(object_, archive_root / args.collection, args.algorithm)
+        event = verify_object(object_, archive_root / collection_name, args.algorithm)
         store.save_verification(event)
         store.save_object(append_verification(object_, event))
         if not event.success:
             failures += 1
-    print(f"Verified collection {args.collection}: {failures} failed object(s)")
+    print(f"Verified collection {collection_name}: {failures} failed object(s)")
     return 1 if failures else 0
 
 
@@ -578,9 +582,67 @@ def command_import_plan_from_media(args: argparse.Namespace) -> int:
 
 
 def command_media_trace(args: argparse.Namespace) -> int:
-    entry, execution = _find_acquisition(args, args.media_id)
-    analysis = [item for item in MediaAnalysisStore(Path(args.metadata_root)).list() if item.media_id == args.media_id]
-    print(json.dumps({"media_id": args.media_id, "source_id": execution.source_id, "snapshot_id": execution.snapshot_id, "mirror_plan_id": execution.plan_id, "mirror_execution_id": execution.id, "acquisition_entry_id": entry.id, "analysis_ids": [item.id for item in analysis]}, indent=2, sort_keys=True)); return 0
+    result = enriched_media_trace(args.media_id, Path(args.metadata_root))
+    try:
+        entry, execution = _find_acquisition(args, args.media_id)
+        result.update({"source_id": execution.source_id, "snapshot_id": execution.snapshot_id,
+                       "mirror_plan_id": execution.plan_id, "mirror_execution_id": execution.id,
+                       "acquisition_entry_id": entry.id})
+    except (ValueError, OSError):
+        result.setdefault("missing", []).append("acquisition")
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0
+
+
+def command_aminet_verify(args: argparse.Namespace) -> int:
+    root = Path(args.archive_root) / args.collection
+    report = verify_collection(args.collection, root, Path(args.metadata_root), args.policy)
+    if getattr(args, "write", False):
+        VerificationReportStore(Path(args.metadata_root)).save(report)
+    print(json.dumps(asdict(report), indent=2, sort_keys=True) if getattr(args, "json", False) else f"{report.result}: {len(report.successful_files)} verified, {len(report.blocking_findings)} blocking")
+    return 0 if report.result == "success" else 1
+
+
+def command_verification_report_create(args: argparse.Namespace) -> int:
+    report = verify_collection(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root), args.policy)
+    VerificationReportStore(Path(args.metadata_root)).save(report)
+    print(json.dumps(asdict(report), indent=2, sort_keys=True) if args.json else report.id)
+    return 0 if report.result == "success" else 1
+
+
+def command_verification_report_show(args: argparse.Namespace) -> int:
+    report = VerificationReportStore(Path(args.metadata_root)).get(args.report_id)
+    if report is None:
+        raise ValueError(f"unknown verification report: {args.report_id}")
+    print(json.dumps(report, indent=2, sort_keys=True)); return 0
+
+
+def command_verification_report_list(args: argparse.Namespace) -> int:
+    print(json.dumps(VerificationReportStore(Path(args.metadata_root)).list(), indent=2, sort_keys=True)); return 0
+
+
+def command_collection_reconcile(args: argparse.Namespace) -> int:
+    result = reconciliation(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root))
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0 if not result.get("blocking") else 1
+
+
+def command_collection_repair_plan(args: argparse.Namespace) -> int:
+    result = repair_plan(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root))
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0
+
+
+def command_object_trace(args: argparse.Namespace) -> int:
+    result = object_trace(args.object_id, Path(args.metadata_root))
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0 if result.get("found") else 1
+
+
+def command_file_trace(args: argparse.Namespace) -> int:
+    result = file_trace(args.file_id, Path(args.metadata_root))
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0 if result.get("found") else 1
+
+
+def command_relationship_backfill(args: argparse.Namespace) -> int:
+    result = create_relationship_backfill_plan(args.collection, Path(args.archive_root) / args.collection, Path(args.metadata_root))
+    print(json.dumps(result, indent=2, sort_keys=True)); return 0 if not result.get("blocking_findings") else 1
 
 
 def parser() -> argparse.ArgumentParser:
@@ -614,9 +676,20 @@ def parser() -> argparse.ArgumentParser:
     import_command.set_defaults(handler=command_import)
 
     verify_command = commands.add_parser("verify", help="verify objects registered for a collection")
-    verify_command.add_argument("--collection", required=True)
+    verify_command.add_argument("collection_name", nargs="?")
+    verify_command.add_argument("--collection", default="aminet")
     verify_command.add_argument("--algorithm", default="sha256", choices=("md5", "sha1", "sha256", "sha512"))
     verify_command.set_defaults(handler=command_verify)
+    aminet_verify = commands.add_parser("aminet-verify", help="read-only Aminet collection verification")
+    aminet_verify.add_argument("--collection", default="aminet"); aminet_verify.add_argument("--policy", choices=("metadata-only", "sha256", "full-hashes"), default="full-hashes"); aminet_verify.add_argument("--json", action="store_true"); aminet_verify.add_argument("--write", action="store_true"); aminet_verify.set_defaults(handler=command_aminet_verify)
+    report_create = commands.add_parser("verification-report-create"); report_create.add_argument("collection"); report_create.add_argument("--policy", choices=("metadata-only", "sha256", "full-hashes"), default="full-hashes"); report_create.add_argument("--json", action="store_true"); report_create.set_defaults(handler=command_verification_report_create)
+    report_show = commands.add_parser("verification-report-show"); report_show.add_argument("report_id"); report_show.add_argument("--json", action="store_true"); report_show.set_defaults(handler=command_verification_report_show)
+    report_list = commands.add_parser("verification-report-list"); report_list.add_argument("--json", action="store_true"); report_list.set_defaults(handler=command_verification_report_list)
+    collection_reconcile = commands.add_parser("collection-reconcile"); collection_reconcile.add_argument("collection"); collection_reconcile.set_defaults(handler=command_collection_reconcile)
+    repair = commands.add_parser("collection-repair-plan"); repair.add_argument("collection"); repair.set_defaults(handler=command_collection_repair_plan)
+    object_trace_cmd = commands.add_parser("object-trace"); object_trace_cmd.add_argument("object_id"); object_trace_cmd.add_argument("--json", action="store_true"); object_trace_cmd.set_defaults(handler=command_object_trace)
+    file_trace_cmd = commands.add_parser("file-trace"); file_trace_cmd.add_argument("file_id"); file_trace_cmd.add_argument("--json", action="store_true"); file_trace_cmd.set_defaults(handler=command_file_trace)
+    backfill = commands.add_parser("relationship-backfill"); backfill.add_argument("collection"); backfill.add_argument("--plan-only", action="store_true", default=True); backfill.set_defaults(handler=command_relationship_backfill)
 
     media_scan = commands.add_parser("media-scan", help="read-only adapter inspection")
     media_scan.add_argument("location")
@@ -742,7 +815,7 @@ def parser() -> argparse.ArgumentParser:
     analysis_validate = commands.add_parser("media-analysis-validate"); analysis_validate.add_argument("analysis_id"); analysis_validate.set_defaults(handler=command_media_analysis_validate)
     analysis_report = commands.add_parser("media-analysis-report"); analysis_report.add_argument("analysis_id"); analysis_report.set_defaults(handler=command_media_analysis_report)
     import_from_media = commands.add_parser("import-plan-from-media"); import_from_media.add_argument("analysis_id"); import_from_media.add_argument("--policy", default="all-safe-members"); import_from_media.add_argument("--collection"); import_from_media.set_defaults(handler=command_import_plan_from_media)
-    media_trace = commands.add_parser("media-trace"); media_trace.add_argument("media_id"); media_trace.set_defaults(handler=command_media_trace)
+    media_trace = commands.add_parser("media-trace"); media_trace.add_argument("media_id"); media_trace.add_argument("--json", action="store_true"); media_trace.set_defaults(handler=command_media_trace)
     return command_parser
 
 
