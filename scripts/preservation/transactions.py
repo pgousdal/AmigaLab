@@ -11,6 +11,21 @@ from hashlib import sha256
 
 from .models import ImportTransaction, TransactionEntry, TransactionEvent
 
+VALID_TRANSITIONS = {
+    "pending": {"opening-source", "reused", "provenance-only", "skipped", "blocked", "failed"},
+    "opening-source": {"streaming", "failed"},
+    "streaming": {"staging", "failed"},
+    "staging": {"staged", "failed"},
+    "staged": {"hashing", "copying", "failed"},
+    "hashing": {"ready-to-copy", "failed"},
+    "ready-to-copy": {"copying", "failed"},
+    "copying": {"verifying", "failed"},
+    "verifying": {"metadata-writing", "completed", "reused", "failed"},
+    "metadata-writing": {"completed", "failed"},
+    "blocked": {"pending", "failed"},
+    "failed": {"pending", "opening-source"},
+}
+
 PHASES = ("planned", "scanning", "staging", "hashing", "metadata-writing", "copying", "verifying", "completed", "failed", "cancelled")
 
 
@@ -63,3 +78,13 @@ class TransactionStore:
         path = directory / f"{event.id}.json"
         path.write_text(json.dumps(asdict(event), indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return path
+
+    def transition(self, entry: TransactionEntry, new_state: str, phase: str, operation: str, result: str = "") -> TransactionEntry:
+        if new_state not in VALID_TRANSITIONS.get(entry.state, set()):
+            raise ValueError(f"invalid transaction entry transition: {entry.state} -> {new_state}")
+        from dataclasses import replace
+        from datetime import datetime, timezone
+        updated = replace(entry, state=new_state)
+        self.save_entry(updated)
+        self.append_event(TransactionEvent(str(uuid4()), entry.transaction_id, entry.id, entry.state, new_state, phase, operation, datetime.now(timezone.utc).isoformat(), result))
+        return updated

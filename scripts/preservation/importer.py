@@ -10,6 +10,8 @@ from hashlib import sha256
 from .manifest import SIDECAR_SUFFIXES, append_provenance, create_object
 from .models import PreservationObject, Source
 from .storage import MetadataStore
+from .models import TransactionEntry
+from .transactions import TransactionStore
 
 
 SUPPORTED_SOURCE_KINDS = frozenset({"directory", "iso", "archive", "mounted"})
@@ -129,9 +131,17 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
     stage = staging_root / source.id / "approved"
     destination_root = archive_root / collection
     copied = reused = 0
+    transaction_id = f"selected-{source.id}"
+    transaction_store = TransactionStore(store.root)
     adapter = None if location.is_dir() else __import__("preservation.sources", fromlist=["adapter_for"]).adapter_for(location, source.kind)
     try:
       for relative_path in selected:
+        entry = TransactionEntry(
+            id=sha256(f"{transaction_id}:import-member:{source.id}:{relative_path}:{collection}/{relative_path}".encode()).hexdigest(),
+            transaction_id=transaction_id, source_path=relative_path, target_path=str(destination_root / relative_path),
+            staging_path=str(stage / relative_path), state="pending")
+        transaction_store.save_entry(entry)
+        entry = transaction_store.transition(entry, "opening-source", "opening-source", "import-member")
         source_root = location
         if adapter is not None:
             entry = next((item for item in adapter.entries() if item.path == relative_path), None)
@@ -142,13 +152,23 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
             with adapter.open(entry) as source_stream, staged_source.open("wb") as target_stream:
                 shutil.copyfileobj(source_stream, target_stream)
             source_root = stage
+            entry = transaction_store.transition(entry, "streaming", "streaming", "stream-member")
+            entry = transaction_store.transition(entry, "staging", "staging", "stage-member")
+            entry = transaction_store.transition(entry, "staged", "staging", "finalize-stage")
         candidate, event = create_object(collection, source_root, relative_path, source)
+        if entry.state == "pending":
+            entry = transaction_store.transition(entry, "opening-source", "opening-source", "import-member")
+        if entry.state == "opening-source":
+            entry = transaction_store.transition(entry, "streaming", "streaming", "stream-member")
+            entry = transaction_store.transition(entry, "staging", "staging", "stage-member")
+            entry = transaction_store.transition(entry, "staged", "staging", "finalize-stage")
         target = destination_root / relative_path
         if target.exists():
             existing = preserved_file(collection, destination_root, relative_path)
             if existing.hashes.sha256 != candidate.files[0].hashes.sha256:
                 raise ValueError(f"blocking destination conflict: {relative_path}")
             store.save_import(event)
+            transaction_store.transition(entry, "reused", "verifying", "reuse-identical")
             reused += 1
             continue
         for file in candidate.files:
@@ -166,8 +186,12 @@ def import_selected(location: Path, collection: str, source: Source, selected: t
                 temporary.unlink(missing_ok=True)
                 raise ValueError(f"destination verification failed: {relative_path}")
             temporary.replace(destination)
+        transaction_store.transition(entry, "copying", "copying", "place-destination")
+        transaction_store.transition(entry, "verifying", "verifying", "verify-destination")
         store.save_import(event)
         store.save_object(candidate)
+        transaction_store.transition(entry, "metadata-writing", "metadata-writing", "write-object")
+        transaction_store.transition(entry, "completed", "completed", "complete-entry")
         copied += 1
     finally:
       if adapter is not None:
