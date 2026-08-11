@@ -37,6 +37,9 @@ These scripts distinguish build failure from emulator launch, but successful
 launch is not automated functional verification. The current profiles are
 placeholders requiring lawful local ROM and Workbench inputs. See the
 [M3 roadmap](m3-roadmap.md) for the planned staged workflow and CI evidence model.
+New M3 profiles use the validated, generated workflow documented in
+[canonical emulator profiles](emulator-profiles.md); the legacy A500/A1200
+files are not canonical and their migration is deferred.
 
 ## First Amiga build
 

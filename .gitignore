@@ -5,3 +5,7 @@ __pycache__/
 .DS_Store
 docker/data/
 docker/config/
+# M3 operator-local assets and generated emulator state
+config/assets.local.json
+runtime/
+generated/

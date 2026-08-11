@@ -22,6 +22,11 @@ The canonical M3 plan and objective acceptance criteria are in the
 - M3.7 Archive ↔ Amiga Integration
 - M3.8 Backup, Restore & Workstation Polish
 
+M3.0.1 establishes the canonical emulator-profile, local asset inventory,
+trust-zone preflight, deterministic rendering, and manual launch foundation.
+See [canonical emulator profiles](emulator-profiles.md). Appliance/session
+automation remains part of later M3.0 work.
+
 AmigaLab is a BBS client workstation; hosting belongs to a separate Multi-BBS
 machine/project. OpenVN integration is currently out of scope. Proprietary
 Amiga assets are always operator-supplied and are never committed or

@@ -1,0 +1,33 @@
+{
+  "capabilities": ["manual-launch-foundation"],
+  "chipset": "AGA",
+  "cpu": "68020",
+  "display": {"fullscreen": false, "scaling": "auto"},
+  "id": "example-a1200",
+  "input": {"mouse_integration": true},
+  "kickstart_asset": "operator-kickstart-31",
+  "launch": {"mode": "windowed"},
+  "machine": "A1200",
+  "media": [],
+  "memory": {"chip_mb": 2, "fast_mb": 8},
+  "mounts": [
+    {
+      "device": "work",
+      "id": "work-directory",
+      "source_asset": "operator-work-directory",
+      "trust_zone": "mutable-workstation-state",
+      "volume": "Work",
+      "writable": true
+    }
+  ],
+  "name": "M3.0.1 synthetic A1200 contract example",
+  "notes": "Not a tested daily-driver profile; operator assets are required.",
+  "runtime": {"config_dir": "config", "state_dir": "state"},
+  "schema_version": 1,
+  "sound": {"enabled": true},
+  "system_disk": {
+    "asset": "operator-workbench-31",
+    "trust_zone": "mutable-workstation-state",
+    "writable": true
+  }
+}

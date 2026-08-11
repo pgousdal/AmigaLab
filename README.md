@@ -51,10 +51,10 @@ M2 provides the stable foundation that M3 will reuse:
 - operator-installed cross-toolchain helpers; and
 - native FS-UAE packages plus two placeholder A500/A1200 test profiles.
 
-The current emulator profiles are not yet an appliance or a canonical daily
-driver. They require operator-supplied licensed media and deliberate local
-configuration. A600, A3000, and A4000-class profiles are roadmap candidates,
-not current repository features.
+M3.0.1 provides a canonical profile/preflight and manual launch foundation, but
+not an appliance or canonical daily driver. It requires operator-supplied
+licensed media and deliberate local configuration. A600, A3000, and A4000-class
+profiles remain roadmap candidates, not validated workstation profiles.
 
 ## Architecture
 
@@ -83,6 +83,7 @@ docker/        Optional Gitea, Meilisearch, Caddy, and Homepage services
 docs/          Architecture, operations, preservation, and roadmap documents
 examples/      Amiga cross-development examples
 fs-uae/        Current placeholder emulator test profiles and guidance
+profiles/      Canonical M3 emulator schema and tracked profile declarations
 metadata/      Repository examples/placeholders; live metadata is under /srv
 scripts/       Preservation, catalog, recovery, and workstation helpers
 tests/         Python test suite for the M2 preservation platform
@@ -157,6 +158,7 @@ launch FS-UAE, but they do not claim automated functional verification. See
 ## Documentation
 
 - [M3 roadmap](docs/m3-roadmap.md)
+- [Canonical emulator profiles](docs/emulator-profiles.md)
 - [Milestones](docs/milestones.md)
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)

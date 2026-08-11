@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amigalab.invalid/schemas/emulator-profile-v1.json",
+  "title": "AmigaLab canonical emulator profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "machine", "cpu", "chipset", "memory", "kickstart_asset", "display", "sound", "input", "media", "mounts", "launch", "runtime"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+    "name": {"type": "string", "minLength": 1},
+    "machine": {"enum": ["A500", "A600", "A1200", "A3000", "A4000"]},
+    "cpu": {"enum": ["68000", "68010", "68020", "68030", "68040", "68060"]},
+    "chipset": {"enum": ["OCS", "ECS", "AGA"]},
+    "memory": {
+      "type": "object", "additionalProperties": false, "required": ["chip_mb", "fast_mb"],
+      "properties": {"chip_mb": {"enum": [1, 2, 4, 8]}, "fast_mb": {"type": "integer", "minimum": 0, "maximum": 512}}
+    },
+    "kickstart_asset": {"type": "string"},
+    "system_disk": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["asset", "trust_zone", "writable"],
+      "properties": {
+        "asset": {"type": "string"},
+        "trust_zone": {"enum": ["preservation-original", "canonical-derived", "amiga-library-export", "mutable-workstation-state"]},
+        "writable": {"type": "boolean"}
+      }
+    },
+    "display": {
+      "type": "object", "additionalProperties": false, "required": ["fullscreen", "scaling"],
+      "properties": {"fullscreen": {"type": "boolean"}, "scaling": {"enum": ["auto", "integer", "none"]}}
+    },
+    "sound": {"type": "object", "additionalProperties": false, "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}},
+    "input": {"type": "object", "additionalProperties": false, "required": ["mouse_integration"], "properties": {"mouse_integration": {"type": "boolean"}}},
+    "media": {"type": "array", "items": {"$ref": "#/$defs/media"}},
+    "mounts": {"type": "array", "items": {"$ref": "#/$defs/mount"}},
+    "launch": {"type": "object", "additionalProperties": false, "required": ["mode"], "properties": {"mode": {"enum": ["windowed", "fullscreen"]}}},
+    "runtime": {
+      "type": "object", "additionalProperties": false, "required": ["config_dir", "state_dir"],
+      "properties": {"config_dir": {"type": "string"}, "state_dir": {"type": "string"}}
+    },
+    "capabilities": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"}
+  },
+  "$defs": {
+    "trust_zone": {"enum": ["preservation-original", "canonical-derived", "amiga-library-export", "mutable-workstation-state"]},
+    "media": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "drive", "asset", "trust_zone", "writable"],
+      "properties": {
+        "type": {"enum": ["floppy", "cd"]}, "drive": {"type": "integer", "minimum": 0, "maximum": 3},
+        "asset": {"type": "string"}, "trust_zone": {"$ref": "#/$defs/trust_zone"}, "writable": {"type": "boolean"}
+      }
+    },
+    "mount": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "device", "source_asset", "trust_zone", "writable"],
+      "properties": {
+        "id": {"type": "string"}, "device": {"type": "string"}, "source_asset": {"type": "string"},
+        "trust_zone": {"$ref": "#/$defs/trust_zone"}, "writable": {"type": "boolean"}, "volume": {"type": "string"}
+      }
+    }
+  }
+}

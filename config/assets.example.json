@@ -1,0 +1,24 @@
+{
+  "assets": [
+    {
+      "id": "operator-kickstart-31",
+      "kind": "kickstart",
+      "path": "/path/to/lawfully-supplied/kickstart.rom",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "operator-workbench-31",
+      "kind": "system-disk",
+      "path": "/path/to/lawfully-supplied/workbench.adf",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "trust_zone": "mutable-workstation-state"
+    },
+    {
+      "id": "operator-work-directory",
+      "kind": "directory",
+      "path": "/path/to/writable/work-directory",
+      "trust_zone": "mutable-workstation-state"
+    }
+  ],
+  "schema_version": 1
+}
