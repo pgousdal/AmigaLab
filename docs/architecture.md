@@ -32,10 +32,13 @@ are tracked. M3 will define a canonical daily driver and appliance session; it
 must retain a deliberate local escape and independent administrative recovery
 path even when normal boot hides Debian.
 
-M3.0.1 now defines the versioned canonical profile, ignored logical-asset
+M3.0.1 defines the versioned canonical profile, ignored logical-asset
 inventory, explicit trust-zone mount checks, deterministic FS-UAE rendering,
-read-only preflight, and manual launch foundation. This is not the canonical
-daily driver or appliance session. See [canonical emulator profiles](emulator-profiles.md).
+read-only preflight, and manual launch foundation. M3.0.2 adds isolated
+generated sessions, atomic lifecycle state, single-session locking, child
+process supervision, diagnostics, and independent host recovery while launch
+remains manual. This is not boot takeover or the canonical daily driver. See
+[canonical profiles and appliance sessions](emulator-profiles.md).
 
 Kickstart ROMs, Workbench/AmigaOS media, commercial software, proprietary SDKs,
 and other restricted assets are supplied lawfully by the operator. They are not

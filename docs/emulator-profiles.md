@@ -1,4 +1,4 @@
-# Canonical emulator profiles (M3.0.1)
+# Canonical profiles and appliance sessions (M3.0.2)
 
 M3.0.1 provides a deliberately small, executable FS-UAE launch contract. It
 can validate, report, render, and manually launch a profile. It does not provide
@@ -79,3 +79,82 @@ its profile is only a synthetic contract. A real manual launch requires FS-UAE,
 a compatible lawful ROM, a lawful/mutable system disk if used, all declared
 mount sources, correct optional hashes, and profile choices compatible with
 those assets. Compatibility has not yet been certified by M3.1.
+
+## Manual appliance sessions
+
+M3.0.2 wraps the same profile, inventory, preflight, and renderer in a
+supervised appliance session. It is deliberately started from a normal Debian
+login and does not alter boot, autologin, a display manager, graphical session
+ownership, networking, or host power control.
+
+```sh
+python3 scripts/amigalab.py session-launch example-a1200 --dry-run
+python3 scripts/amigalab.py session-launch example-a1200
+python3 scripts/amigalab.py session-status
+python3 scripts/amigalab.py session-status --json
+python3 scripts/amigalab.py session-show SESSION_ID
+```
+
+The canonical profile's matching `launch.mode` and `display.fullscreen` values
+render `fullscreen = 1`; there is no appliance-only fullscreen switch. A
+session dry run performs read-only preflight and prints the proposed paths and
+argument array without creating state or starting FS-UAE. For M3.0.1
+compatibility, `profile-launch --dry-run` still writes its deterministic legacy
+render. Real `profile-launch` and `session-launch` share one supervisor.
+
+### Lifecycle and runtime layout
+
+Each real launch has a safe generated ID and isolated generated state:
+
+```text
+runtime/profiles/
+├── appliance.lock
+└── sessions/SESSION_ID/
+    ├── state.json
+    ├── config/PROFILE_ID.fs-uae
+    ├── state/
+    ├── logs/lifecycle.jsonl
+    ├── logs/fs-uae.log
+    ├── overlays/
+    └── temp/
+```
+
+`state.json` schema version 1 moves only through `preparing → ready → running`
+and then `exited`, `failed`, or `interrupted`. Invalid transitions fail. Atomic
+replacement prevents partial JSON rewrites. The adjacent `preflight.json`
+retains the launch decision. State records timestamps, child
+PID only while running, the argument array, config/log locations, exit code,
+reason, abnormal-exit flag, and cleanup status. It contains no asset bytes,
+hashes, or guest content. Failed-session metadata and per-session logs survive
+for diagnosis; M3.0.2 does not yet implement retention pruning.
+
+Generated config, emulator state, overlays, logs, and temporary data remain in
+the session. Runtime placement inside a mounted read-only preservation,
+canonical-derived, or library-export directory is rejected before creation.
+All `runtime/` content remains Git-ignored and non-authoritative.
+
+### Supervision, locking, and recovery
+
+FS-UAE is started directly with a subprocess argument array, never a shell.
+Console output and errors go to the session emulator log, capped at 1 MiB. The supervisor waits
+for that child, persists its exit code, and classifies zero, non-zero, and
+interrupted exits. Ctrl-C or SIGTERM asks the child to terminate and waits up
+to five seconds; only then does it kill that child and record the escalation.
+
+An advisory `flock` permits one appliance supervisor per runtime root. Lock
+metadata names the session and supervisor, but file existence alone is never
+proof of activity. `session-status` reports `active`, `stale`, or `none`, plus
+incomplete state and the most recent session. A later launch safely takes and
+rewrites an unlocked stale lock; do not delete lock files as routine recovery.
+
+Normal emulator exit returns to the launching Debian terminal. The standard
+FS-UAE quit action remains the primary graphical escape. Ctrl-C in the launch
+terminal is the controlled host escape. No login, TTY, SSH, or display-manager
+configuration is changed, so another configured TTY (commonly Ctrl-Alt-F2/F3)
+or an already available SSH session remains independent emergency recovery.
+From there, run `session-status` and inspect the logs; this does not depend on
+AmigaOS booting.
+
+M3.0.2 does **not** provide boot-to-Amiga, autologin, automatic session startup,
+automatic host poweroff, or a certified daily-driver Amiga profile. Emulator
+console output also does not prove AmigaOS reached its desktop.
