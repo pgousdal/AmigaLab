@@ -1,4 +1,4 @@
-# Canonical profiles and appliance sessions (M3.0.2)
+# Canonical profiles and appliance sessions (M3.0)
 
 M3.0.1 provides a deliberately small, executable FS-UAE launch contract. It
 can validate, report, render, and manually launch a profile. It does not provide
@@ -274,3 +274,14 @@ never autologged, TTYs remain enabled, and FS-UAE is not required for an admin
 login. M3.0.3 does not certify a daily-driver profile, install AmigaOS, power
 off after exit, add networking, or add museum/game integration; those remain
 later M3 work.
+
+## Hardware qualification (M3.0.4)
+
+`python3 scripts/amigalab.py appliance-qualify [--json]` adds read-only host
+observations for FS-UAE/version, LightDM/X11/display context, host audio,
+keyboard/mouse/controller discovery, appliance-user permissions, runtime and
+trust-zone safety, recovery paths, removable USB detection, and session state.
+It does not change services or open hardware, and it never converts detection
+into a hardware success claim. The baseline, policies, status semantics,
+report schema, and exact cold-boot procedure are in [M3.0 appliance hardware
+qualification](appliance-qualification.md).

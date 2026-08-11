@@ -12,6 +12,7 @@ import sys
 from emulation.profiles import PreflightResult, preflight, render_fs_uae
 from emulation.sessions import SessionConflict, SessionStore, launch_session, plan_session, session_status
 from emulation.appliance import ApplianceConfig, appliance_check, load_appliance_config, save_appliance_config
+from emulation.qualification import observe_host, qualification_report
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -65,6 +66,30 @@ def command_appliance_run(args: argparse.Namespace) -> int:
     args.json = False
     args.command = "session-launch"
     return command_launch(args)
+
+
+def command_appliance_qualify(args: argparse.Namespace) -> int:
+    config = None
+    config_error = None
+    readiness = None
+    try:
+        config = load_appliance_config(Path(args.config))
+        readiness = appliance_check(config, REPOSITORY, Path(args.inventory), Path(args.runtime_root), args.fs_uae)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        config_error = f"invalid appliance configuration: {error}"
+    observation = observe_host(args.fs_uae, Path(args.runtime_root), args.appliance_user)
+    report = qualification_report(config, config_error, readiness, observation)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"M3.0 appliance qualification — profile: {report['profile_id'] or 'none'}")
+        for check in report["checks"]:
+            source = "automated" if check["automated"] else "human"
+            print(f"{check['status']:14} {check['id']} ({source}): {check['evidence']}")
+        summary = report["summary"]
+        print(f"Summary: PASS={summary['PASS']} FAIL={summary['FAIL']} SKIP={summary['SKIP']} HUMAN_REQUIRED={summary['HUMAN_REQUIRED']}")
+        print(report["status"])
+    return 0 if report["automated_ready"] else 2
 
 
 def _profile_path(value: str) -> Path:
@@ -187,7 +212,7 @@ def parser() -> argparse.ArgumentParser:
     appliance_default = str(REPOSITORY / "config" / "appliance.local.json")
     for name, function in (("appliance-status", command_appliance_status), ("appliance-check", command_appliance_status),
                            ("appliance-enable", command_appliance_enable), ("appliance-disable", command_appliance_disable),
-                           ("appliance-run", command_appliance_run)):
+                           ("appliance-run", command_appliance_run), ("appliance-qualify", command_appliance_qualify)):
         command = subcommands.add_parser(name)
         if name == "appliance-enable": command.add_argument("profile")
         if name == "appliance-check": command.add_argument("profile", nargs="?")
@@ -195,6 +220,8 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--inventory", default=str(REPOSITORY / "config" / "assets.local.json"))
         command.add_argument("--runtime-root", default=str(REPOSITORY / "runtime" / "profiles"))
         command.add_argument("--fs-uae", default="fs-uae")
+        if name == "appliance-qualify":
+            command.add_argument("--appliance-user", default="amigalab-appliance")
         command.add_argument("--json", action="store_true")
         command.set_defaults(function=function)
     return result

@@ -129,9 +129,12 @@ class SessionStore:
             metadata = json.loads(self.lock_path.read_text(encoding="utf-8") or "null")
         except (OSError, json.JSONDecodeError):
             pass
-        with self.lock_path.open("a+", encoding="utf-8") as lock:
+        # Status inspection must remain read-only. A non-blocking shared lock
+        # still conflicts with the supervisor's exclusive lock and therefore
+        # distinguishes active from stale metadata without opening for write.
+        with self.lock_path.open("r", encoding="utf-8") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
                 return {"status": "active", "metadata": metadata}
             return {"status": "stale" if metadata else "none", "metadata": metadata}

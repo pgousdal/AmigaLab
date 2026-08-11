@@ -103,6 +103,17 @@ def test_single_session_lock_and_stale_metadata_recovery(tmp_path: Path) -> None
     recovered.close()
 
 
+def test_session_status_inspects_stale_lock_without_write_access(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    lock = runtime / "appliance.lock"
+    lock.write_text('{"session_id": "prior-session"}\n', encoding="utf-8")
+    lock.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    before = lock.read_bytes()
+    assert session_status(runtime)["lock"]["status"] == "stale"
+    assert lock.read_bytes() == before
+
+
 def test_invalid_transition_fails(tmp_path: Path) -> None:
     profile, inventory, runtime = _fixture(tmp_path)
     state = launch_session(plan_session(profile, inventory, runtime, str(_emulator(tmp_path))), runtime)

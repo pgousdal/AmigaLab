@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amigalab.local/schemas/appliance-qualification-v1.json",
+  "title": "AmigaLab appliance qualification report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "profile_id", "host", "summary", "automated_ready", "hardware_qualified", "status", "checks"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "profile_id": {"type": ["string", "null"]},
+    "host": {"type": "object"},
+    "summary": {"type": "object", "required": ["PASS", "FAIL", "SKIP", "HUMAN_REQUIRED"], "properties": {
+      "PASS": {"type": "integer", "minimum": 0}, "FAIL": {"type": "integer", "minimum": 0},
+      "SKIP": {"type": "integer", "minimum": 0}, "HUMAN_REQUIRED": {"type": "integer", "minimum": 0}
+    }},
+    "automated_ready": {"type": "boolean"},
+    "hardware_qualified": {"type": "boolean"},
+    "status": {"type": "string"},
+    "checks": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+      "required": ["id", "status", "evidence", "automated", "details"], "properties": {
+        "id": {"type": "string"}, "status": {"enum": ["PASS", "FAIL", "SKIP", "HUMAN_REQUIRED"]},
+        "evidence": {"type": "string"}, "automated": {"type": "boolean"}, "details": {"type": ["object", "null"]}
+      }
+    }}
+  }
+}

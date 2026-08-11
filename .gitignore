@@ -10,3 +10,4 @@ config/assets.local.json
 config/appliance.local.json
 runtime/
 generated/
+qualification-reports/

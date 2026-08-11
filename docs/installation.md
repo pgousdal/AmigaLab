@@ -17,9 +17,11 @@ operator; the repository never downloads or redistributes them. The current
 FS-UAE profiles are placeholders. Follow the [M3 roadmap](m3-roadmap.md) rather
 than enabling unattended graphical startup from them.
 
-M3.0.1 supports a manual-only profile preflight and launch foundation. It does
-not alter login or boot. To configure the ignored local asset inventory and run
-preflight, follow [canonical emulator profiles](emulator-profiles.md).
+M3.0 provides profile preflight, supervised launch, and reversible opt-in
+LightDM boot. To configure the ignored local asset inventory and run preflight,
+follow [canonical emulator profiles](emulator-profiles.md). Before treating a
+host as qualified, complete [M3.0 appliance hardware
+qualification](appliance-qualification.md).
 
 To enable the Visual Studio Code repository, set `vscode_repository_enabled:
 true` in an inventory-specific variable file. Set `vscode_install_package: true`

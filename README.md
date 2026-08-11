@@ -51,9 +51,11 @@ M2 provides the stable foundation that M3 will reuse:
 - operator-installed cross-toolchain helpers; and
 - native FS-UAE packages plus two placeholder A500/A1200 test profiles.
 
-M3.0.1 provides a canonical profile/preflight and manual launch foundation, but
-not an appliance or canonical daily driver. It requires operator-supplied
-licensed media and deliberate local configuration. A600, A3000, and A4000-class
+M3.0.1–M3.0.4 provide canonical profile preflight, supervised sessions,
+reversible opt-in appliance boot, and read-only host qualification diagnostics.
+The implementation still requires real-host acceptance and operator-supplied
+licensed media; it is not a canonical daily driver. See [hardware
+qualification](docs/appliance-qualification.md). A600, A3000, and A4000-class
 profiles remain roadmap candidates, not validated workstation profiles.
 
 ## Architecture

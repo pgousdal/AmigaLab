@@ -40,7 +40,11 @@ process supervision, diagnostics, and independent host recovery while launch
 remains manual. M3.0.3 adds opt-in boot integration: LightDM owns one X11 seat,
 logs in only a locked unprivileged appliance account, and a systemd user unit
 invokes the same supervisor. It does not replace Debian boot, gettys, PAM
-administration, or SSH. See [canonical profiles and appliance sessions](emulator-profiles.md).
+administration, or SSH. M3.0.4 adds read-only host observations and explicit
+human acceptance records; it does not infer display, audio, or input success
+from process discovery. See [canonical profiles and appliance
+sessions](emulator-profiles.md) and [appliance hardware
+qualification](appliance-qualification.md).
 
 Kickstart ROMs, Workbench/AmigaOS media, commercial software, proprietary SDKs,
 and other restricted assets are supplied lawfully by the operator. They are not

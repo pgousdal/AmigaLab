@@ -190,12 +190,20 @@ Acceptance criteria:
   autostart opt-in until recovery has been verified;
 - one redistributable fixture profile exercises generation and validation in
   automated tests without proprietary bytes;
-- a session can start FS-UAE fullscreen, exit cleanly, and request host shutdown
-  only after guest storage is quiescent; unexpected exit does not loop forever;
+- a session can start FS-UAE fullscreen and exit cleanly without powering off
+  the host; unexpected exit does not loop forever;
 - input ownership, removable media, logs/retention, service ordering, and
   offline behavior are documented and tested where practical; and
 - at least one local host escape and one independently configured
   administrative recovery path are demonstrated and documented.
+
+M3.0.1 through M3.0.4 implement this foundation. Automated checks cover
+configuration, preflight, prerequisites, policy, and session evidence, but
+hardware acceptance requires [M3.0 appliance hardware
+qualification](appliance-qualification.md). Current status: **M3.0
+implementation complete; hardware qualification pending**. M3.0 is not
+complete until a real host records the required human passes; independently
+configured SSH and an absent controller may be `SKIP`.
 
 ## M3.1 — Daily Driver Amiga
 
