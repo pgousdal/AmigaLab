@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+/usr/bin/systemctl --user import-environment DISPLAY XAUTHORITY
+/usr/bin/systemctl --user reset-failed amigalab-appliance.service
+/usr/bin/systemctl --user start --wait amigalab-appliance.service || true
+exec /usr/bin/xterm -hold -title 'AmigaLab recovery console' -e /bin/sh -c 'printf "%s\n" "The Amiga session ended. Use Ctrl-Alt-F2 for a host TTY, or inspect with: python3 /opt/amigalab/scripts/amigalab.py session-status --runtime-root /var/lib/amigalab-appliance/runtime"; exec /bin/bash'

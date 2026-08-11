@@ -25,6 +25,12 @@ To enable the Visual Studio Code repository, set `vscode_repository_enabled:
 true` in an inventory-specific variable file. Set `vscode_install_package: true`
 as well if Ansible should install Code.
 
+Boot-to-Amiga remains absent from an ordinary install. To opt in, first create
+the local inventories and pass the appliance check described in
+[appliance host integration](emulator-profiles.md#boot-to-amiga-host-integration-m303),
+then run the normal Ansible playbook. The playbook installs LightDM/X11 and the
+dedicated account only when `config/appliance.local.json` says `enabled: true`.
+
 For containers, copy `docker/.env.example` to `docker/.env`, replace the
 Meilisearch key, and run `make docker-up`. Review and set public hostnames and
 ports before exposing services beyond the local machine.

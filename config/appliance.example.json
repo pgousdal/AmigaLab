@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "graphical_session": "lightdm-x11",
+  "profile_id": "example-a1200",
+  "restart_policy": "none",
+  "schema_version": 1,
+  "session_mode": "fullscreen",
+  "startup_delay_seconds": 0
+}

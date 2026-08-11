@@ -3,3 +3,149 @@
   ansible.builtin.apt:
     name: "{{ emulation_packages }}"
     state: present
+
+- name: Check for operator-local appliance intent
+  ansible.builtin.stat:
+    path: "{{ amigalab_appliance_config_source }}"
+  register: amigalab_appliance_intent
+  delegate_to: localhost
+  become: false
+
+- name: Load operator-local appliance intent
+  ansible.builtin.include_vars:
+    file: "{{ amigalab_appliance_config_source }}"
+    name: amigalab_appliance
+  when: amigalab_appliance_intent.stat.exists
+
+- name: Validate appliance intent
+  ansible.builtin.assert:
+    that:
+      - not (amigalab_appliance.enabled | default(false) | bool) or amigalab_appliance.profile_id is match('^[a-z0-9][a-z0-9-]{0,63}$')
+      - (amigalab_appliance.restart_policy | default('none')) == 'none'
+      - (amigalab_appliance.session_mode | default('fullscreen')) == 'fullscreen'
+      - (amigalab_appliance.graphical_session | default('lightdm-x11')) == 'lightdm-x11'
+      - (amigalab_appliance.startup_delay_seconds | default(0) | int) == 0
+    fail_msg: Invalid or unsafe local appliance configuration.
+
+- name: Set effective appliance state
+  ansible.builtin.set_fact:
+    amigalab_appliance_active: "{{ amigalab_appliance.enabled | default(false) | bool }}"
+
+- name: Check whether LightDM was previously appliance-managed
+  ansible.builtin.stat:
+    path: /etc/amigalab/appliance-lightdm-managed
+  register: amigalab_appliance_lightdm_managed
+
+- name: Install appliance graphical packages only when opted in
+  ansible.builtin.apt:
+    name: [lightdm, xserver-xorg, xterm]
+    state: present
+  when: amigalab_appliance_active
+
+- name: Create dedicated unprivileged appliance account
+  ansible.builtin.user:
+    name: "{{ amigalab_appliance_user }}"
+    comment: AmigaLab local appliance session
+    home: /var/lib/amigalab-appliance
+    create_home: true
+    shell: /bin/bash
+    groups: audio,video,input
+    append: true
+    password_lock: true
+  when: amigalab_appliance_active
+
+- name: Install repository-owned appliance runtime
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ item.src }}"
+    dest: "/opt/amigalab/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: preserve
+  loop:
+    - { src: scripts, dest: scripts }
+    - { src: profiles, dest: profiles }
+  when: amigalab_appliance_active
+
+- name: Create appliance host directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /etc/amigalab, owner: root, group: root, mode: '0755' }
+    - { path: /opt/amigalab/bin, owner: root, group: root, mode: '0755' }
+    - { path: /var/lib/amigalab-appliance/runtime, owner: "{{ amigalab_appliance_user }}", group: "{{ amigalab_appliance_user }}", mode: '0750' }
+    - { path: /etc/systemd/user, owner: root, group: root, mode: '0755' }
+    - { path: /usr/share/xsessions, owner: root, group: root, mode: '0755' }
+    - { path: /etc/lightdm/lightdm.conf.d, owner: root, group: root, mode: '0755' }
+  when: amigalab_appliance_active
+
+- name: Require local asset inventory before appliance activation
+  ansible.builtin.stat:
+    path: "{{ amigalab_appliance_inventory_source }}"
+  register: amigalab_appliance_inventory
+  delegate_to: localhost
+  become: false
+  when: amigalab_appliance_active
+
+- name: Refuse appliance activation without local inventory
+  ansible.builtin.assert:
+    that: amigalab_appliance_inventory.stat.exists
+    fail_msg: Run appliance-check and provide config/assets.local.json before reconciling appliance mode.
+  when: amigalab_appliance_active
+
+- name: Install local appliance configuration and inventory
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ amigalab_appliance_user }}"
+    mode: '0640'
+  loop:
+    - { src: "{{ amigalab_appliance_config_source }}", dest: /etc/amigalab/appliance.json }
+    - { src: "{{ amigalab_appliance_inventory_source }}", dest: /etc/amigalab/assets.json }
+  when: amigalab_appliance_active
+
+- name: Record appliance ownership of LightDM activation
+  ansible.builtin.copy:
+    content: "Managed by the AmigaLab appliance role.\n"
+    dest: /etc/amigalab/appliance-lightdm-managed
+    owner: root
+    group: root
+    mode: '0644'
+  when: amigalab_appliance_active
+
+- name: Install appliance unit and X session integration
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: amigalab-appliance.service.j2, dest: /etc/systemd/user/amigalab-appliance.service, mode: '0644' }
+    - { src: amigalab-appliance-session.sh.j2, dest: /opt/amigalab/bin/amigalab-appliance-session, mode: '0755' }
+    - { src: amigalab-appliance.desktop.j2, dest: /usr/share/xsessions/amigalab-appliance.desktop, mode: '0644' }
+    - { src: lightdm-amigalab.conf.j2, dest: /etc/lightdm/lightdm.conf.d/50-amigalab-appliance.conf, mode: '0644' }
+  when: amigalab_appliance_active
+  notify: Reload appliance systemd
+
+- name: Remove appliance automatic login when disabled
+  ansible.builtin.file:
+    path: /etc/lightdm/lightdm.conf.d/50-amigalab-appliance.conf
+    state: absent
+  when: not amigalab_appliance_active
+  notify: Reload appliance systemd
+
+- name: Discover host services for reversible appliance activation
+  ansible.builtin.service_facts:
+
+- name: Reconcile LightDM boot activation
+  ansible.builtin.systemd:
+    name: lightdm.service
+    enabled: "{{ amigalab_appliance_active }}"
+  when:
+    - "'lightdm.service' in ansible_facts.services"
+    - amigalab_appliance_active or amigalab_appliance_lightdm_managed.stat.exists

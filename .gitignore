@@ -7,5 +7,6 @@ docker/data/
 docker/config/
 # M3 operator-local assets and generated emulator state
 config/assets.local.json
+config/appliance.local.json
 runtime/
 generated/

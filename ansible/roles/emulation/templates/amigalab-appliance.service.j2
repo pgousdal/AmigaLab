@@ -1,0 +1,23 @@
+[Unit]
+Description=AmigaLab supervised boot appliance session
+Documentation=file:///opt/amigalab/docs/emulator-profiles.md
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/amigalab/scripts/amigalab.py appliance-run --config /etc/amigalab/appliance.json --inventory /etc/amigalab/assets.json --runtime-root /var/lib/amigalab-appliance/runtime --fs-uae /usr/bin/fs-uae
+WorkingDirectory=/opt/amigalab
+Environment=PYTHONUNBUFFERED=1
+Restart=no
+TimeoutStartSec=infinity
+TimeoutStopSec=10s
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/amigalab-appliance/runtime
+
+[Install]
+WantedBy=default.target

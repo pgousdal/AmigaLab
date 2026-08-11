@@ -11,9 +11,60 @@ import sys
 
 from emulation.profiles import PreflightResult, preflight, render_fs_uae
 from emulation.sessions import SessionConflict, SessionStore, launch_session, plan_session, session_status
+from emulation.appliance import ApplianceConfig, appliance_check, load_appliance_config, save_appliance_config
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def _appliance_config(args: argparse.Namespace):
+    return load_appliance_config(Path(args.config), missing_ok=True)
+
+
+def command_appliance_status(args: argparse.Namespace) -> int:
+    try:
+        config = _appliance_config(args)
+        if getattr(args, "profile", None):
+            config = ApplianceConfig(1, config.enabled, args.profile)
+        report = appliance_check(config, REPOSITORY, Path(args.inventory), Path(args.runtime_root), args.fs_uae)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        print(f"ERROR: invalid appliance configuration: {error}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, indent=2, sort_keys=True) if args.json else
+          f"Appliance: {'enabled' if config.enabled else 'disabled'}\nProfile: {config.profile_id or 'none'}\nReady: {'yes' if report['ready'] else 'no'}\nService: {report['service']}\nRecovery: Ctrl-Alt-F2 or independently configured SSH")
+    return 0 if report["ready"] or (args.command == "appliance-status" and not config.enabled) else 2
+
+
+def command_appliance_enable(args: argparse.Namespace) -> int:
+    config = ApplianceConfig(1, True, args.profile)
+    report = appliance_check(config, REPOSITORY, Path(args.inventory), Path(args.runtime_root), args.fs_uae)
+    if not report["ready"]:
+        print(json.dumps(report, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
+    save_appliance_config(Path(args.config), config)
+    print(f"Appliance intent enabled for {args.profile}; run the Ansible playbook to reconcile the host.")
+    return 0
+
+
+def command_appliance_disable(args: argparse.Namespace) -> int:
+    prior = _appliance_config(args)
+    save_appliance_config(Path(args.config), ApplianceConfig(1, False, prior.profile_id))
+    print("Appliance intent disabled; run the Ansible playbook to remove automatic login.")
+    return 0
+
+
+def command_appliance_run(args: argparse.Namespace) -> int:
+    try:
+        config = load_appliance_config(Path(args.config))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        print(f"ERROR: invalid appliance configuration: {error}", file=sys.stderr); return 2
+    if not config.enabled:
+        print("ERROR: appliance mode is disabled", file=sys.stderr); return 2
+    args.profile = config.profile_id
+    args.dry_run = False
+    args.json = False
+    args.command = "session-launch"
+    return command_launch(args)
 
 
 def _profile_path(value: str) -> Path:
@@ -131,6 +182,19 @@ def parser() -> argparse.ArgumentParser:
         if name == "session-show":
             command.add_argument("session_id")
         command.add_argument("--runtime-root", default=str(REPOSITORY / "runtime" / "profiles"))
+        command.add_argument("--json", action="store_true")
+        command.set_defaults(function=function)
+    appliance_default = str(REPOSITORY / "config" / "appliance.local.json")
+    for name, function in (("appliance-status", command_appliance_status), ("appliance-check", command_appliance_status),
+                           ("appliance-enable", command_appliance_enable), ("appliance-disable", command_appliance_disable),
+                           ("appliance-run", command_appliance_run)):
+        command = subcommands.add_parser(name)
+        if name == "appliance-enable": command.add_argument("profile")
+        if name == "appliance-check": command.add_argument("profile", nargs="?")
+        command.add_argument("--config", default=appliance_default)
+        command.add_argument("--inventory", default=str(REPOSITORY / "config" / "assets.local.json"))
+        command.add_argument("--runtime-root", default=str(REPOSITORY / "runtime" / "profiles"))
+        command.add_argument("--fs-uae", default="fs-uae")
         command.add_argument("--json", action="store_true")
         command.set_defaults(function=function)
     return result

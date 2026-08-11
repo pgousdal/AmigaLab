@@ -37,8 +37,10 @@ inventory, explicit trust-zone mount checks, deterministic FS-UAE rendering,
 read-only preflight, and manual launch foundation. M3.0.2 adds isolated
 generated sessions, atomic lifecycle state, single-session locking, child
 process supervision, diagnostics, and independent host recovery while launch
-remains manual. This is not boot takeover or the canonical daily driver. See
-[canonical profiles and appliance sessions](emulator-profiles.md).
+remains manual. M3.0.3 adds opt-in boot integration: LightDM owns one X11 seat,
+logs in only a locked unprivileged appliance account, and a systemd user unit
+invokes the same supervisor. It does not replace Debian boot, gettys, PAM
+administration, or SSH. See [canonical profiles and appliance sessions](emulator-profiles.md).
 
 Kickstart ROMs, Workbench/AmigaOS media, commercial software, proprietary SDKs,
 and other restricted assets are supplied lawfully by the operator. They are not

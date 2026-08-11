@@ -158,3 +158,119 @@ AmigaOS booting.
 M3.0.2 does **not** provide boot-to-Amiga, autologin, automatic session startup,
 automatic host poweroff, or a certified daily-driver Amiga profile. Emulator
 console output also does not prove AmigaOS reached its desktop.
+
+## Boot-to-Amiga host integration (M3.0.3)
+
+M3.0.3 provides an explicitly selected boot appliance without making FS-UAE a
+boot or administration dependency:
+
+```text
+Debian multi-user boot + normal gettys
+  -> LightDM on its graphical seat
+  -> local autologin of amigalab-appliance only
+  -> AmigaLab X11 session
+  -> systemd user unit (Restart=no)
+  -> amigalab.py appliance-run
+  -> M3.0.2 preflight/session supervisor
+  -> /usr/bin/fs-uae, fullscreen as declared by the profile
+```
+
+LightDM/X11 establishes display and PAM/audio session ownership without a
+desktop environment and matches FS-UAE's Debian graphical environment. `xterm`
+is the only post-session UI. A systemd user unit owns stop and child lifecycle;
+its fixed command accepts no profile-supplied command. `Restart=no`, no timer,
+and no delay mean a failure is attempted once. The X session then remains at a
+recovery terminal, preventing display-manager relogin loops.
+
+The locked `amigalab-appliance` account has no sudo rights or usable password.
+It receives only `audio`, `video`, and `input` for local display, sound, and
+controllers. FS-UAE never runs as root. Local-seat autologin does not change
+remote authentication, and no SSH setting is read or edited. `ProtectHome=true`
+means appliance assets should live below `/srv/amigalab`, not a personal home.
+
+### Configure, preview, enable, and disable
+
+Create the ignored asset inventory first. The tracked examples contain no
+usable ROM and are not daily-driver profiles. Use absolute inventory paths for
+appliance mode because Ansible deploys the inventory from the clone to `/etc`;
+the preview rejects relative paths whose meaning would change.
+
+```sh
+cp config/assets.example.json config/assets.local.json
+# edit with lawful local paths and hashes
+python3 scripts/amigalab.py appliance-check PROFILE_ID --json
+python3 scripts/amigalab.py appliance-enable PROFILE_ID
+make ansible
+```
+
+`appliance-enable` refuses a missing profile, invalid assets/trust zones, a
+non-fullscreen profile, or unavailable FS-UAE. It atomically creates ignored
+`config/appliance.local.json`; it does not mutate `/etc` or systemd. Ansible is
+the explicit reconciliation boundary. It copies intent to
+`/etc/amigalab/appliance.json`, the inventory to `/etc/amigalab/assets.json`
+mode 0640, fixed code to `/opt/amigalab`, and provisions the writable runtime
+at `/var/lib/amigalab-appliance/runtime`. Repeated runs are idempotent.
+
+Read-only inspection is available before or after reconciliation:
+
+```sh
+python3 scripts/amigalab.py appliance-status
+python3 scripts/amigalab.py appliance-check --json
+python3 scripts/amigalab.py session-status --runtime-root /var/lib/amigalab-appliance/runtime
+```
+
+Disable without editing generated host files:
+
+```sh
+python3 scripts/amigalab.py appliance-disable
+make ansible
+```
+
+This removes the AmigaLab LightDM autologin drop-in and disables its managed
+boot service. Diagnostic runtime state and the locked account remain available.
+
+### Boot, exit, failure, and stopping
+
+After normal multi-user host startup, LightDM creates X11. The fixed session
+imports only `DISPLAY` and `XAUTHORITY` into its user manager and starts
+`amigalab-appliance.service`. The CLI reloads the selected profile, validates
+inventory paths, hashes and zones, checks FS-UAE, creates isolated metadata,
+and launches it. Normal quit, non-zero exit, missing display, manual stop,
+invalid configuration, missing ROM/inventory, hash failure, and trust failure
+all return to or leave the recovery terminal. An unlocked stale lock is safely
+replaced by the existing supervisor. There is no shutdown or reboot action.
+
+From another administrator login, stop the running unit with:
+
+```sh
+sudo -u amigalab-appliance XDG_RUNTIME_DIR=/run/user/$(id -u amigalab-appliance) \
+  systemctl --user stop amigalab-appliance.service
+```
+
+The supervisor asks FS-UAE to terminate, waits five seconds, then escalates
+only for its child. systemd uses a ten-second stop timeout and control-group
+scope.
+
+### Emergency recovery
+
+If FS-UAE fails during automatic startup:
+
+1. Press Ctrl-Alt-F2 (or F3) and log in with a normal Debian administrator.
+   AmigaLab never disables gettys.
+2. Alternatively use independently configured SSH. Appliance mode neither
+   configures nor weakens it.
+3. Inspect `journalctl _UID=$(id -u amigalab-appliance)` and the user unit from
+   the appliance account context.
+4. Run `session-status` with the host runtime path above, followed by
+   `session-show SESSION_ID --runtime-root /var/lib/amigalab-appliance/runtime`.
+   Emulator output is in the reported `logs/fs-uae.log`.
+5. Run `appliance-disable` in the repository and `make ansible` if automatic
+   entry should stay off.
+6. Correct the profile/assets, rerun `appliance-check`, then enable and
+   reconcile again.
+
+Debian's normal non-graphical recovery target is also independent of X. Root is
+never autologged, TTYs remain enabled, and FS-UAE is not required for an admin
+login. M3.0.3 does not certify a daily-driver profile, install AmigaOS, power
+off after exit, add networking, or add museum/game integration; those remain
+later M3 work.

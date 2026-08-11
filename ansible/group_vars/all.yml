@@ -225,6 +225,20 @@ emulation_packages:
   - fs-uae
   - fs-uae-launcher
 
+# Boot-to-Amiga is reconciled only from the ignored local intent file. These
+# defaults keep ordinary installations out of appliance mode.
+amigalab_appliance_user: amigalab-appliance
+amigalab_appliance_config_source: "{{ playbook_dir }}/../../config/appliance.local.json"
+amigalab_appliance_inventory_source: "{{ playbook_dir }}/../../config/assets.local.json"
+amigalab_appliance:
+  enabled: false
+  graphical_session: lightdm-x11
+  profile_id: ''
+  restart_policy: none
+  schema_version: 1
+  session_mode: fullscreen
+  startup_delay_seconds: 0
+
 # Enable only when installation from Microsoft's official repository is wanted.
 vscode_repository_enabled: false
 vscode_install_package: false
