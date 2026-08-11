@@ -1,18 +1,28 @@
 # Milestones
 
 - M0 Foundation ✅
-- M1 Cross Development 🚧
-- M2 Archive System ⏳
-- M2.12 Concrete transaction recovery ✅
-- M2.20 Aminet verification, traceability, and metadata reconciliation ✅
-- M2.21 Scheduled operations and retention controls ✅
-- M2.22 Local catalog and full-text search ✅
-- M2.23 Local read-only catalog web interface ✅
-- M2.24 Rich catalog views and optional Meilisearch synchronization ✅
+- M1 Cross-development foundation ✅
+- M2 Preservation platform ✅ (`v0.2.0`)
+- M3 Daily Amiga Workstation, Development Lab & Museum — planned
 
-## M2 release
+M2 remains the stable preservation, archive, provenance, recovery, catalog,
+search, and controlled external-source foundation. Compatibility fixes may
+continue, but M3 must reuse that architecture rather than rewrite it.
 
-**Feature complete in v0.2.0.** Future bug fixes and compatibility work may
-still improve M2 components; new product scope moves to M3 — Amiga Development
-and Museum Workflows.
-- M3 BBS Museum ⏳
+The canonical M3 plan and objective acceptance criteria are in the
+[M3 roadmap](m3-roadmap.md):
+
+- M3.0 Amiga Appliance Foundation
+- M3.1 Daily Driver Amiga
+- M3.2 Networking, Internet & BBS Clients
+- M3.3 Gaming & WHDLoad
+- M3.4 Native & Cross Development
+- M3.5 Local Amiga CI & Test Matrix
+- M3.6 Museum Experience
+- M3.7 Archive ↔ Amiga Integration
+- M3.8 Backup, Restore & Workstation Polish
+
+AmigaLab is a BBS client workstation; hosting belongs to a separate Multi-BBS
+machine/project. OpenVN integration is currently out of scope. Proprietary
+Amiga assets are always operator-supplied and are never committed or
+automatically redistributed.
